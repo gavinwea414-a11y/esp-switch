@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
+<style>
+body {
+  text-align:center;
+  font-family:sans-serif;
+}
+
+button {
+  font-size: 30px;
+  padding: 20px;
+  margin-top: 30px;
+}
+
+#status {
+  font-size: 22px;
+  margin-top: 20px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>ESP 遠端開關</h2>
+
+<button onclick="toggle()">切換</button>
+
+<div id="status">連線中...</div>
+
+<script>
+const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
+  reconnectPeriod: 1000,
+  connectTimeout: 2000,
+  clean: true
+});
+
+let state = "OFF";
+
+client.on('connect', () => {
+  document.getElementById("status").innerText = "已連線";
+  client.subscribe('home/relay1/state');
+});
+
+client.on('message', (topic, message) => {
+  state = message.toString();
+  document.getElementById("status").innerText = "狀態：" + state;
+});
+
+function toggle(){
+  const cmd = (state === "ON") ? "OFF" : "ON";
+
+  // 提升體感
+  document.getElementById("status").innerText = "切換中...";
+
+  client.publish('home/relay1/set', cmd);
+}
+</script>
+
+</body>
+</html>
