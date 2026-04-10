@@ -1,64 +1,242 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-Hant">
 <head>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP Switch 控制</title>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      max-width: 420px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+      color: #222;
+    }
 
-<style>
-body {
-  text-align:center;
-  font-family:sans-serif;
-}
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 18px;
+      margin-bottom: 16px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
 
-button {
-  font-size: 30px;
-  padding: 20px;
-  margin-top: 30px;
-}
+    h1 {
+      font-size: 24px;
+      text-align: center;
+      margin-bottom: 16px;
+    }
 
-#status {
-  font-size: 22px;
-  margin-top: 20px;
-}
-</style>
+    .status {
+      font-size: 18px;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    .small {
+      font-size: 14px;
+      color: #666;
+      text-align: center;
+      margin-top: 6px;
+    }
+
+    button {
+      width: 100%;
+      padding: 16px;
+      font-size: 18px;
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+
+    .btn-on {
+      background: #2e7d32;
+      color: white;
+    }
+
+    .btn-off {
+      background: #616161;
+      color: white;
+    }
+
+    .btn-save {
+      background: #1565c0;
+      color: white;
+      margin-top: 12px;
+    }
+
+    label {
+      display: block;
+      margin-top: 12px;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+
+    input[type="time"] {
+      width: 100%;
+      padding: 12px;
+      font-size: 18px;
+      box-sizing: border-box;
+      border-radius: 10px;
+      border: 1px solid #ccc;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .row input[type="checkbox"] {
+      transform: scale(1.4);
+    }
+
+    .msg {
+      text-align: center;
+      margin-top: 10px;
+      font-size: 15px;
+      color: #1565c0;
+      min-height: 20px;
+    }
+  </style>
 </head>
-
 <body>
+  <h1>ESP 遠端開關</h1>
 
-<h2>ESP 遠端開關</h2>
+  <div class="card">
+    <div class="status" id="connStatus">連線中...</div>
+    <div class="status" id="relayStatus">目前狀態：未知</div>
+    <div class="small">手動控制</div>
+    <button id="toggleBtn" class="btn-off" onclick="toggleRelay()">切換</button>
+  </div>
 
-<button onclick="toggle()">切換</button>
+  <div class="card">
+    <div class="small">自動排程設定</div>
 
-<div id="status">連線中...</div>
+    <div class="row">
+      <label for="autoEnabled" style="margin:0;">啟用自動排程</label>
+      <input type="checkbox" id="autoEnabled">
+    </div>
 
-<script>
-const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt', {
-  reconnectPeriod: 1000,
-  connectTimeout: 2000,
-  clean: true
-});
+    <label for="onTime">開啟時間</label>
+    <input type="time" id="onTime" value="19:00">
 
-let state = "OFF";
+    <label for="offTime">關閉時間</label>
+    <input type="time" id="offTime" value="23:30">
 
-client.on('connect', () => {
-  document.getElementById("status").innerText = "已連線";
-  client.subscribe('home/relay1/state');
-});
+    <button class="btn-save" onclick="saveSchedule()">儲存設定</button>
+    <div class="msg" id="msg"></div>
+  </div>
 
-client.on('message', (topic, message) => {
-  state = message.toString();
-  document.getElementById("status").innerText = "狀態：" + state;
-});
+  <script>
+    const TOPIC_SET        = "gavinwea414-a11y/esp-switch01/relay1/set";
+    const TOPIC_STATE      = "gavinwea414-a11y/esp-switch01/relay1/state";
 
-function toggle(){
-  const cmd = (state === "ON") ? "OFF" : "ON";
+    const TOPIC_AUTO_SET   = "gavinwea414-a11y/esp-switch01/relay1/auto/enabled/set";
+    const TOPIC_AUTO_STATE = "gavinwea414-a11y/esp-switch01/relay1/auto/enabled/state";
 
-  // 提升體感
-  document.getElementById("status").innerText = "切換中...";
+    const TOPIC_ON_SET     = "gavinwea414-a11y/esp-switch01/relay1/schedule/on/set";
+    const TOPIC_ON_STATE   = "gavinwea414-a11y/esp-switch01/relay1/schedule/on/state";
 
-  client.publish('home/relay1/set', cmd);
-}
-</script>
+    const TOPIC_OFF_SET    = "gavinwea414-a11y/esp-switch01/relay1/schedule/off/set";
+    const TOPIC_OFF_STATE  = "gavinwea414-a11y/esp-switch01/relay1/schedule/off/state";
 
+    const client = mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
+      reconnectPeriod: 1000,
+      connectTimeout: 2000,
+      clean: true
+    });
+
+    let relayState = "OFF";
+
+    const connStatus = document.getElementById("connStatus");
+    const relayStatus = document.getElementById("relayStatus");
+    const toggleBtn = document.getElementById("toggleBtn");
+    const autoEnabled = document.getElementById("autoEnabled");
+    const onTime = document.getElementById("onTime");
+    const offTime = document.getElementById("offTime");
+    const msg = document.getElementById("msg");
+
+    function setMessage(text) {
+      msg.innerText = text;
+      setTimeout(() => {
+        if (msg.innerText === text) msg.innerText = "";
+      }, 2000);
+    }
+
+    function updateRelayUI() {
+      relayStatus.innerText = "目前狀態：" + relayState;
+
+      if (relayState === "ON") {
+        toggleBtn.innerText = "目前開啟，點我關閉";
+        toggleBtn.className = "btn-on";
+      } else {
+        toggleBtn.innerText = "目前關閉，點我開啟";
+        toggleBtn.className = "btn-off";
+      }
+    }
+
+    function toggleRelay() {
+      const cmd = (relayState === "ON") ? "OFF" : "ON";
+      relayState = cmd;   // 先更新畫面，體感更快
+      updateRelayUI();
+      client.publish(TOPIC_SET, cmd);
+    }
+
+    function saveSchedule() {
+      if (!onTime.value || !offTime.value) {
+        setMessage("請先選擇時間");
+        return;
+      }
+
+      client.publish(TOPIC_AUTO_SET, autoEnabled.checked ? "1" : "0");
+      client.publish(TOPIC_ON_SET, onTime.value);
+      client.publish(TOPIC_OFF_SET, offTime.value);
+
+      setMessage("設定已送出");
+    }
+
+    client.on("connect", () => {
+      connStatus.innerText = "MQTT 已連線";
+
+      client.subscribe(TOPIC_STATE);
+      client.subscribe(TOPIC_AUTO_STATE);
+      client.subscribe(TOPIC_ON_STATE);
+      client.subscribe(TOPIC_OFF_STATE);
+    });
+
+    client.on("reconnect", () => {
+      connStatus.innerText = "重新連線中...";
+    });
+
+    client.on("offline", () => {
+      connStatus.innerText = "已離線";
+    });
+
+    client.on("error", () => {
+      connStatus.innerText = "連線錯誤";
+    });
+
+    client.on("message", (topic, message) => {
+      const value = message.toString();
+
+      if (topic === TOPIC_STATE) {
+        relayState = value;
+        updateRelayUI();
+      } else if (topic === TOPIC_AUTO_STATE) {
+        autoEnabled.checked = (value === "1" || value === "ON" || value === "true");
+      } else if (topic === TOPIC_ON_STATE) {
+        onTime.value = value;
+      } else if (topic === TOPIC_OFF_STATE) {
+        offTime.value = value;
+      }
+    });
+
+    updateRelayUI();
+  </script>
 </body>
 </html>
