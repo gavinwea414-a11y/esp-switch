@@ -3,43 +3,57 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ESP Switch 控制</title>
+  <title>ESP 雙開關控制</title>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <style>
     body {
       font-family: sans-serif;
-      max-width: 420px;
+      max-width: 460px;
       margin: 0 auto;
-      padding: 20px;
+      padding: 18px;
       background: #f5f5f5;
       color: #222;
+    }
+
+    h1 {
+      font-size: 24px;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+
+    .conn {
+      text-align: center;
+      margin-bottom: 16px;
+      color: #1565c0;
+      font-size: 15px;
     }
 
     .card {
       background: #fff;
       border-radius: 16px;
       padding: 18px;
-      margin-bottom: 16px;
+      margin-bottom: 18px;
       box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     }
 
-    h1 {
-      font-size: 24px;
+    .device-title {
+      font-size: 21px;
+      font-weight: bold;
+      margin-bottom: 10px;
       text-align: center;
-      margin-bottom: 16px;
     }
 
     .status {
-      font-size: 18px;
+      font-size: 17px;
       text-align: center;
-      margin-top: 8px;
+      margin: 8px 0;
     }
 
     .small {
       font-size: 14px;
       color: #666;
       text-align: center;
-      margin-top: 6px;
+      margin-top: 4px;
     }
 
     button {
@@ -49,6 +63,7 @@
       border: none;
       border-radius: 12px;
       cursor: pointer;
+      margin-top: 12px;
     }
 
     .btn-on {
@@ -64,7 +79,6 @@
     .btn-save {
       background: #1565c0;
       color: white;
-      margin-top: 12px;
     }
 
     label {
@@ -81,6 +95,7 @@
       box-sizing: border-box;
       border-radius: 10px;
       border: 1px solid #ccc;
+      background: #fff;
     }
 
     .row {
@@ -88,7 +103,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      margin-top: 8px;
+      margin-top: 10px;
     }
 
     .row input[type="checkbox"] {
@@ -104,74 +119,99 @@
     }
   </style>
 </head>
+
 <body>
-  <h1>ESP 遠端開關</h1>
+  <h1>ESP 雙開關控制</h1>
+  <div class="conn" id="connStatus">MQTT 連線中...</div>
 
+  <!-- 第一台 -->
   <div class="card">
-    <div class="status" id="connStatus">連線中...</div>
-    <div class="status" id="relayStatus">目前狀態：未知</div>
-    <div class="small">手動控制</div>
-    <button id="toggleBtn" class="btn-off" onclick="toggleRelay()">切換</button>
-  </div>
+    <div class="device-title">開關 1</div>
+    <div class="status" id="relayStatus1">目前狀態：未知</div>
+    <button id="toggleBtn1" class="btn-off" onclick="toggleRelay(1)">切換</button>
 
-  <div class="card">
     <div class="small">自動排程設定</div>
 
     <div class="row">
-      <label for="autoEnabled" style="margin:0;">啟用自動排程</label>
-      <input type="checkbox" id="autoEnabled">
+      <label for="autoEnabled1" style="margin:0;">啟用自動排程</label>
+      <input type="checkbox" id="autoEnabled1">
     </div>
 
-    <label for="onTime">開啟時間</label>
-    <input type="time" id="onTime" value="19:00">
+    <label for="onTime1">開啟時間</label>
+    <input type="time" id="onTime1" value="19:00">
 
-    <label for="offTime">關閉時間</label>
-    <input type="time" id="offTime" value="23:30">
+    <label for="offTime1">關閉時間</label>
+    <input type="time" id="offTime1" value="23:30">
 
-    <button class="btn-save" onclick="saveSchedule()">儲存設定</button>
-    <div class="msg" id="msg"></div>
+    <button class="btn-save" onclick="saveSchedule(1)">儲存開關 1 設定</button>
+    <div class="msg" id="msg1"></div>
+  </div>
+
+  <!-- 第二台 -->
+  <div class="card">
+    <div class="device-title">開關 2</div>
+    <div class="status" id="relayStatus2">目前狀態：未知</div>
+    <button id="toggleBtn2" class="btn-off" onclick="toggleRelay(2)">切換</button>
+
+    <div class="small">自動排程設定</div>
+
+    <div class="row">
+      <label for="autoEnabled2" style="margin:0;">啟用自動排程</label>
+      <input type="checkbox" id="autoEnabled2">
+    </div>
+
+    <label for="onTime2">開啟時間</label>
+    <input type="time" id="onTime2" value="19:00">
+
+    <label for="offTime2">關閉時間</label>
+    <input type="time" id="offTime2" value="23:30">
+
+    <button class="btn-save" onclick="saveSchedule(2)">儲存開關 2 設定</button>
+    <div class="msg" id="msg2"></div>
   </div>
 
   <script>
-    const TOPIC_SET        = "gavinwea414-a11y/esp-switch01/relay1/set";
-    const TOPIC_STATE      = "gavinwea414-a11y/esp-switch01/relay1/state";
-
-    const TOPIC_AUTO_SET   = "gavinwea414-a11y/esp-switch01/relay1/auto/enabled/set";
-    const TOPIC_AUTO_STATE = "gavinwea414-a11y/esp-switch01/relay1/auto/enabled/state";
-
-    const TOPIC_ON_SET     = "gavinwea414-a11y/esp-switch01/relay1/schedule/on/set";
-    const TOPIC_ON_STATE   = "gavinwea414-a11y/esp-switch01/relay1/schedule/on/state";
-
-    const TOPIC_OFF_SET    = "gavinwea414-a11y/esp-switch01/relay1/schedule/off/set";
-    const TOPIC_OFF_STATE  = "gavinwea414-a11y/esp-switch01/relay1/schedule/off/state";
-
     const client = mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
       reconnectPeriod: 1000,
       connectTimeout: 2000,
       clean: true
     });
 
-    let relayState = "OFF";
+    const devices = {
+      1: {
+        name: "開關 1",
+        base: "gavinwea414-a11y/esp-switch01/relay1",
+        relayState: "OFF"
+      },
+      2: {
+        name: "開關 2",
+        base: "gavinwea414-a11y/esp-switch02/relay1",
+        relayState: "OFF"
+      }
+    };
 
     const connStatus = document.getElementById("connStatus");
-    const relayStatus = document.getElementById("relayStatus");
-    const toggleBtn = document.getElementById("toggleBtn");
-    const autoEnabled = document.getElementById("autoEnabled");
-    const onTime = document.getElementById("onTime");
-    const offTime = document.getElementById("offTime");
-    const msg = document.getElementById("msg");
 
-    function setMessage(text) {
+    function topic(deviceNo, suffix) {
+      return devices[deviceNo].base + suffix;
+    }
+
+    function setMessage(deviceNo, text) {
+      const msg = document.getElementById("msg" + deviceNo);
       msg.innerText = text;
       setTimeout(() => {
         if (msg.innerText === text) msg.innerText = "";
       }, 2000);
     }
 
-    function updateRelayUI() {
-      relayStatus.innerText = "目前狀態：" + relayState;
+    function updateRelayUI(deviceNo) {
+      const state = devices[deviceNo].relayState;
+      const relayStatus = document.getElementById("relayStatus" + deviceNo);
+      const toggleBtn = document.getElementById("toggleBtn" + deviceNo);
 
-      if (relayState === "ON") {
+      relayStatus.innerText = "目前狀態：" + state;
+
+      if (state === "ON") {
         toggleBtn.innerText = "目前開啟，點我關閉";
         toggleBtn.className = "btn-on";
       } else {
@@ -180,63 +220,85 @@
       }
     }
 
-    function toggleRelay() {
-      const cmd = (relayState === "ON") ? "OFF" : "ON";
-      relayState = cmd;   // 先更新畫面，體感更快
-      updateRelayUI();
-      client.publish(TOPIC_SET, cmd);
+    function toggleRelay(deviceNo) {
+      const current = devices[deviceNo].relayState;
+      const cmd = (current === "ON") ? "OFF" : "ON";
+
+      // 先更新畫面，體感更快
+      devices[deviceNo].relayState = cmd;
+      updateRelayUI(deviceNo);
+
+      client.publish(topic(deviceNo, "/set"), cmd);
     }
 
-    function saveSchedule() {
+    function saveSchedule(deviceNo) {
+      const autoEnabled = document.getElementById("autoEnabled" + deviceNo);
+      const onTime = document.getElementById("onTime" + deviceNo);
+      const offTime = document.getElementById("offTime" + deviceNo);
+
       if (!onTime.value || !offTime.value) {
-        setMessage("請先選擇時間");
+        setMessage(deviceNo, "請先選擇時間");
         return;
       }
 
-      client.publish(TOPIC_AUTO_SET, autoEnabled.checked ? "1" : "0");
-      client.publish(TOPIC_ON_SET, onTime.value);
-      client.publish(TOPIC_OFF_SET, offTime.value);
+      client.publish(topic(deviceNo, "/auto/enabled/set"), autoEnabled.checked ? "1" : "0");
+      client.publish(topic(deviceNo, "/schedule/on/set"), onTime.value);
+      client.publish(topic(deviceNo, "/schedule/off/set"), offTime.value);
 
-      setMessage("設定已送出");
+      setMessage(deviceNo, "設定已送出");
     }
 
     client.on("connect", () => {
       connStatus.innerText = "MQTT 已連線";
 
-      client.subscribe(TOPIC_STATE);
-      client.subscribe(TOPIC_AUTO_STATE);
-      client.subscribe(TOPIC_ON_STATE);
-      client.subscribe(TOPIC_OFF_STATE);
-    });
-
-    client.on("reconnect", () => {
-      connStatus.innerText = "重新連線中...";
-    });
-
-    client.on("offline", () => {
-      connStatus.innerText = "已離線";
-    });
-
-    client.on("error", () => {
-      connStatus.innerText = "連線錯誤";
-    });
-
-    client.on("message", (topic, message) => {
-      const value = message.toString();
-
-      if (topic === TOPIC_STATE) {
-        relayState = value;
-        updateRelayUI();
-      } else if (topic === TOPIC_AUTO_STATE) {
-        autoEnabled.checked = (value === "1" || value === "ON" || value === "true");
-      } else if (topic === TOPIC_ON_STATE) {
-        onTime.value = value;
-      } else if (topic === TOPIC_OFF_STATE) {
-        offTime.value = value;
+      for (const no of [1, 2]) {
+        client.subscribe(topic(no, "/state"));
+        client.subscribe(topic(no, "/auto/enabled/state"));
+        client.subscribe(topic(no, "/schedule/on/state"));
+        client.subscribe(topic(no, "/schedule/off/state"));
       }
     });
 
-    updateRelayUI();
+    client.on("reconnect", () => {
+      connStatus.innerText = "MQTT 重新連線中...";
+    });
+
+    client.on("offline", () => {
+      connStatus.innerText = "MQTT 已離線";
+    });
+
+    client.on("error", () => {
+      connStatus.innerText = "MQTT 連線錯誤";
+    });
+
+    client.on("message", (receivedTopic, message) => {
+      const value = message.toString();
+
+      for (const no of [1, 2]) {
+        const base = devices[no].base;
+
+        if (receivedTopic === base + "/state") {
+          devices[no].relayState = value;
+          updateRelayUI(no);
+        }
+
+        if (receivedTopic === base + "/auto/enabled/state") {
+          document.getElementById("autoEnabled" + no).checked =
+            (value === "1" || value === "ON" || value === "true");
+        }
+
+        if (receivedTopic === base + "/schedule/on/state") {
+          document.getElementById("onTime" + no).value = value;
+        }
+
+        if (receivedTopic === base + "/schedule/off/state") {
+          document.getElementById("offTime" + no).value = value;
+        }
+      }
+    });
+
+    updateRelayUI(1);
+    updateRelayUI(2);
   </script>
 </body>
 </html>
