@@ -252,7 +252,7 @@
 
     function log(msg) {
       const ts = new Date().toLocaleTimeString("zh-TW", { hour12: false });
-      msgEl.textContent = `[${ts}] ${msg}\n` + msgEl.textContent.slice(0, 1600);
+      msgEl.textContent = `[${ts}] ${msg}\n` + msgEl.textContent.slice(0, 1800);
     }
 
     function formatNow() {
@@ -292,7 +292,8 @@
         offTime: "23:30",
         lastUpdated: "尚未更新",
         lastSeenMs: 0,
-        topics: getTopics(device.base)
+        topics: getTopics(device.base),
+        pendingSave: null
       };
 
       const mount = document.getElementById(mountId);
@@ -405,6 +406,25 @@
       [tp.state, tp.autoState, tp.onState, tp.offState].forEach(topic => client.subscribe(topic));
     }
 
+    function sameTime(a, b) {
+      return a === b;
+    }
+
+    function checkPendingSave(device) {
+      const s = state[device.id];
+      if (!s.pendingSave) return;
+
+      const p = s.pendingSave;
+      const autoMatched = s.autoEnabled === p.autoEnabled;
+      const onMatched = s.onTime === p.onTime;
+      const offMatched = s.offTime === p.offTime;
+
+      if (autoMatched && onMatched && offMatched) {
+        log(`${device.name} → 設定已確認儲存`);
+        s.pendingSave = null;
+      }
+    }
+
     function renderAll() {
       DEVICES.forEach(d => renderState(d));
       setControlsEnabled(isConnected);
@@ -466,18 +486,22 @@
           s.relay = payload.toUpperCase() === "ON" ? "ON" : "OFF";
           touchUpdated(d);
           renderState(d);
+          checkPendingSave(d);
         } else if (topic === tp.autoState) {
           s.autoEnabled = ["1", "true", "on"].includes(payload.toLowerCase());
           touchUpdated(d);
           renderState(d);
+          checkPendingSave(d);
         } else if (topic === tp.onState) {
           if (/^\d{2}:\d{2}$/.test(payload)) s.onTime = payload;
           touchUpdated(d);
           renderState(d);
+          checkPendingSave(d);
         } else if (topic === tp.offState) {
           if (/^\d{2}:\d{2}$/.test(payload)) s.offTime = payload;
           touchUpdated(d);
           renderState(d);
+          checkPendingSave(d);
         }
       });
     });
@@ -537,9 +561,20 @@
           return;
         }
 
+        if (sameTime(onTime, offTime)) {
+          log(`${d.name} → 開啟時間與關閉時間不能相同`);
+          return;
+        }
+
         s.autoEnabled = autoEnabled;
         s.onTime = onTime;
         s.offTime = offTime;
+        s.pendingSave = {
+          autoEnabled,
+          onTime,
+          offTime
+        };
+
         touchUpdated(d);
         renderState(d);
 
@@ -547,7 +582,7 @@
         client.publish(tp.onSet, onTime);
         client.publish(tp.offSet, offTime);
 
-        log(`${d.name} → 已送出排程設定（自動:${autoEnabled ? "啟用" : "停用"}，開:${onTime}，關:${offTime}）`);
+        log(`${d.name} → 設定送出中，等待設備確認…`);
       });
     });
 
