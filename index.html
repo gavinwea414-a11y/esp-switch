@@ -1,304 +1,410 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ESP 雙開關控制</title>
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ESP-01S 雙設備 MQTT 遠端開關</title>
   <style>
+    :root {
+      --bg: #f4f6fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --primary: #2563eb;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --border: #e5e7eb;
+      --shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+      --disabled: #9ca3af;
+    }
+
+    * { box-sizing: border-box; }
+
     body {
-      font-family: sans-serif;
-      max-width: 460px;
+      margin: 0;
+      padding: 16px;
+      font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .container {
+      max-width: 760px;
       margin: 0 auto;
-      padding: 18px;
-      background: #f5f5f5;
-      color: #222;
-    }
-
-    h1 {
-      font-size: 24px;
-      text-align: center;
-      margin-bottom: 12px;
-    }
-
-    .conn {
-      text-align: center;
-      margin-bottom: 16px;
-      color: #1565c0;
-      font-size: 15px;
+      display: grid;
+      gap: 14px;
     }
 
     .card {
-      background: #fff;
+      background: var(--card);
+      border: 1px solid var(--border);
       border-radius: 16px;
-      padding: 18px;
-      margin-bottom: 18px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      box-shadow: var(--shadow);
+      padding: 14px;
     }
 
-    .device-title {
-      font-size: 21px;
-      font-weight: bold;
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.35rem;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--danger);
+      box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15);
+    }
+
+    .dot.online {
+      background: var(--success);
+      box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.16);
+    }
+
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       margin-bottom: 10px;
-      text-align: center;
     }
 
-    .status {
-      font-size: 17px;
-      text-align: center;
-      margin: 8px 0;
+    .state {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      color: #fff;
+      background: var(--muted);
     }
 
-    .small {
-      font-size: 14px;
-      color: #666;
-      text-align: center;
-      margin-top: 4px;
+    .state.on { background: var(--success); }
+    .state.off { background: var(--danger); }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin: 10px 0;
     }
 
     button {
-      width: 100%;
-      padding: 16px;
-      font-size: 18px;
       border: none;
       border-radius: 12px;
+      padding: 11px 14px;
+      font-size: 0.95rem;
+      font-weight: 700;
       cursor: pointer;
-      margin-top: 12px;
+      flex: 1;
+      transition: opacity 0.2s ease;
     }
 
-    .btn-on {
-      background: #2e7d32;
-      color: white;
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+      background: var(--disabled) !important;
+      color: #fff !important;
     }
 
-    .btn-off {
-      background: #616161;
-      color: white;
-    }
+    .btn-on { background: #16a34a; color: #fff; }
+    .btn-off { background: #ef4444; color: #fff; }
+    .btn-save { background: var(--primary); color: #fff; width: 100%; margin-top: 10px; }
 
-    .btn-save {
-      background: #1565c0;
-      color: white;
-    }
-
-    label {
-      display: block;
-      margin-top: 12px;
-      margin-bottom: 6px;
-      font-weight: bold;
-    }
-
-    input[type="time"] {
-      width: 100%;
-      padding: 12px;
-      font-size: 18px;
-      box-sizing: border-box;
-      border-radius: 10px;
-      border: 1px solid #ccc;
-      background: #fff;
-    }
-
-    .row {
+    .line {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 12px;
-      margin-top: 10px;
+      gap: 10px;
+      margin: 10px 0;
+      font-size: 0.95rem;
     }
 
-    .row input[type="checkbox"] {
-      transform: scale(1.4);
+    input[type="time"] {
+      width: 120px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 1rem;
+      background: #fff;
+    }
+
+    input[type="time"]:disabled,
+    input[type="checkbox"]:disabled {
+      opacity: 0.6;
+    }
+
+    input[type="checkbox"] {
+      transform: scale(1.2);
     }
 
     .msg {
-      text-align: center;
-      margin-top: 10px;
-      font-size: 15px;
-      color: #1565c0;
-      min-height: 20px;
+      font-size: 0.92rem;
+      color: var(--muted);
+      min-height: 1.4em;
+      white-space: pre-wrap;
     }
   </style>
 </head>
-
 <body>
-  <h1>ESP 雙開關控制</h1>
-  <div class="conn" id="connStatus">MQTT 連線中...</div>
-
-  <!-- 第一台 -->
-  <div class="card">
-    <div class="device-title">開關 1</div>
-    <div class="status" id="relayStatus1">目前狀態：未知</div>
-    <button id="toggleBtn1" class="btn-off" onclick="toggleRelay(1)">切換</button>
-
-    <div class="small">自動排程設定</div>
-
-    <div class="row">
-      <label for="autoEnabled1" style="margin:0;">啟用自動排程</label>
-      <input type="checkbox" id="autoEnabled1">
+  <div class="container">
+    <div class="card">
+      <h1>ESP-01S 雙設備 MQTT 遠端開關</h1>
+      <div class="status-bar">
+        <span id="dot" class="dot"></span>
+        <span>MQTT 連線狀態：<span id="connText">離線</span></span>
+      </div>
     </div>
 
-    <label for="onTime1">開啟時間</label>
-    <input type="time" id="onTime1" value="19:00">
+    <div id="card1" class="card"></div>
+    <div id="card2" class="card"></div>
 
-    <label for="offTime1">關閉時間</label>
-    <input type="time" id="offTime1" value="23:30">
-
-    <button class="btn-save" onclick="saveSchedule(1)">儲存開關 1 設定</button>
-    <div class="msg" id="msg1"></div>
-  </div>
-
-  <!-- 第二台 -->
-  <div class="card">
-    <div class="device-title">開關 2</div>
-    <div class="status" id="relayStatus2">目前狀態：未知</div>
-    <button id="toggleBtn2" class="btn-off" onclick="toggleRelay(2)">切換</button>
-
-    <div class="small">自動排程設定</div>
-
-    <div class="row">
-      <label for="autoEnabled2" style="margin:0;">啟用自動排程</label>
-      <input type="checkbox" id="autoEnabled2">
+    <div class="card">
+      <strong>訊息提示</strong>
+      <div id="msg" class="msg">等待連線…</div>
     </div>
-
-    <label for="onTime2">開啟時間</label>
-    <input type="time" id="onTime2" value="19:00">
-
-    <label for="offTime2">關閉時間</label>
-    <input type="time" id="offTime2" value="23:30">
-
-    <button class="btn-save" onclick="saveSchedule(2)">儲存開關 2 設定</button>
-    <div class="msg" id="msg2"></div>
   </div>
 
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
-    const client = mqtt.connect("wss://broker.emqx.io:8084/mqtt", {
-      reconnectPeriod: 1000,
-      connectTimeout: 2000,
-      clean: true
+    const MQTT_URL = "wss://broker.emqx.io:8084/mqtt";
+
+    const DEVICES = [
+      { id: "switch01", name: "開關 1", base: "gavinwea414-a11y/esp-switch01/relay1" },
+      { id: "switch02", name: "開關 2", base: "gavinwea414-a11y/esp-switch02/relay1" }
+    ];
+
+    const state = {};
+    let isConnected = false;
+
+    const msgEl = document.getElementById("msg");
+    const dotEl = document.getElementById("dot");
+    const connTextEl = document.getElementById("connText");
+
+    function log(msg) {
+      const ts = new Date().toLocaleTimeString("zh-TW", { hour12: false });
+      msgEl.textContent = `[${ts}] ${msg}\n` + msgEl.textContent.slice(0, 800);
+    }
+
+    function t(base, suffix) {
+      return `${base}/${suffix}`;
+    }
+
+    function getTopics(base) {
+      return {
+        set: t(base, "set"),
+        state: t(base, "state"),
+        autoSet: t(base, "auto/enabled/set"),
+        autoState: t(base, "auto/enabled/state"),
+        onSet: t(base, "schedule/on/set"),
+        onState: t(base, "schedule/on/state"),
+        offSet: t(base, "schedule/off/set"),
+        offState: t(base, "schedule/off/state")
+      };
+    }
+
+    function buildCard(device, mountId) {
+      state[device.id] = {
+        relay: "OFF",
+        autoEnabled: true,
+        onTime: "19:00",
+        offTime: "23:30",
+        topics: getTopics(device.base)
+      };
+
+      const mount = document.getElementById(mountId);
+      mount.innerHTML = `
+        <div class="title-row">
+          <strong>${device.name}</strong>
+          <span id="${device.id}_state" class="state off">關閉</span>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-on" id="${device.id}_on">手動開啟</button>
+          <button class="btn-off" id="${device.id}_off">手動關閉</button>
+        </div>
+
+        <div class="line">
+          <label for="${device.id}_auto">啟用自動排程</label>
+          <input type="checkbox" id="${device.id}_auto" checked />
+        </div>
+
+        <div class="line">
+          <label for="${device.id}_on_time">開啟時間</label>
+          <input type="time" id="${device.id}_on_time" value="19:00" />
+        </div>
+
+        <div class="line">
+          <label for="${device.id}_off_time">關閉時間</label>
+          <input type="time" id="${device.id}_off_time" value="23:30" />
+        </div>
+
+        <button class="btn-save" id="${device.id}_save">儲存設定</button>
+      `;
+    }
+
+    function renderState(device) {
+      const s = state[device.id];
+      const tag = document.getElementById(`${device.id}_state`);
+      const isOn = s.relay === "ON";
+
+      tag.textContent = isOn ? "開啟" : "關閉";
+      tag.className = `state ${isOn ? "on" : "off"}`;
+
+      document.getElementById(`${device.id}_auto`).checked = !!s.autoEnabled;
+      document.getElementById(`${device.id}_on_time`).value = s.onTime || "19:00";
+      document.getElementById(`${device.id}_off_time`).value = s.offTime || "23:30";
+    }
+
+    function setControlsEnabled(enabled) {
+      DEVICES.forEach(d => {
+        document.getElementById(`${d.id}_on`).disabled = !enabled;
+        document.getElementById(`${d.id}_off`).disabled = !enabled;
+        document.getElementById(`${d.id}_auto`).disabled = !enabled;
+        document.getElementById(`${d.id}_on_time`).disabled = !enabled;
+        document.getElementById(`${d.id}_off_time`).disabled = !enabled;
+        document.getElementById(`${d.id}_save`).disabled = !enabled;
+      });
+    }
+
+    function renderAll() {
+      DEVICES.forEach(d => renderState(d));
+      setControlsEnabled(isConnected);
+    }
+
+    DEVICES.forEach((d, idx) => buildCard(d, idx === 0 ? "card1" : "card2"));
+
+    const client = mqtt.connect(MQTT_URL, {
+      clientId: `web-esp-switch-${Math.random().toString(16).slice(2, 10)}`,
+      clean: true,
+      reconnectPeriod: 2000,
+      connectTimeout: 8000
     });
 
-    const devices = {
-      1: {
-        name: "開關 1",
-        base: "gavinwea414-a11y/esp-switch01/relay1",
-        relayState: "OFF"
-      },
-      2: {
-        name: "開關 2",
-        base: "gavinwea414-a11y/esp-switch02/relay1",
-        relayState: "OFF"
-      }
-    };
-
-    const connStatus = document.getElementById("connStatus");
-
-    function topic(deviceNo, suffix) {
-      return devices[deviceNo].base + suffix;
-    }
-
-    function setMessage(deviceNo, text) {
-      const msg = document.getElementById("msg" + deviceNo);
-      msg.innerText = text;
-      setTimeout(() => {
-        if (msg.innerText === text) msg.innerText = "";
-      }, 2000);
-    }
-
-    function updateRelayUI(deviceNo) {
-      const state = devices[deviceNo].relayState;
-      const relayStatus = document.getElementById("relayStatus" + deviceNo);
-      const toggleBtn = document.getElementById("toggleBtn" + deviceNo);
-
-      relayStatus.innerText = "目前狀態：" + state;
-
-      if (state === "ON") {
-        toggleBtn.innerText = "目前開啟，點我關閉";
-        toggleBtn.className = "btn-on";
-      } else {
-        toggleBtn.innerText = "目前關閉，點我開啟";
-        toggleBtn.className = "btn-off";
-      }
-    }
-
-    function toggleRelay(deviceNo) {
-      const current = devices[deviceNo].relayState;
-      const cmd = (current === "ON") ? "OFF" : "ON";
-
-      // 先更新畫面，體感更快
-      devices[deviceNo].relayState = cmd;
-      updateRelayUI(deviceNo);
-
-      client.publish(topic(deviceNo, "/set"), cmd);
-    }
-
-    function saveSchedule(deviceNo) {
-      const autoEnabled = document.getElementById("autoEnabled" + deviceNo);
-      const onTime = document.getElementById("onTime" + deviceNo);
-      const offTime = document.getElementById("offTime" + deviceNo);
-
-      if (!onTime.value || !offTime.value) {
-        setMessage(deviceNo, "請先選擇時間");
-        return;
-      }
-
-      client.publish(topic(deviceNo, "/auto/enabled/set"), autoEnabled.checked ? "1" : "0");
-      client.publish(topic(deviceNo, "/schedule/on/set"), onTime.value);
-      client.publish(topic(deviceNo, "/schedule/off/set"), offTime.value);
-
-      setMessage(deviceNo, "設定已送出");
-    }
-
     client.on("connect", () => {
-      connStatus.innerText = "MQTT 已連線";
+      isConnected = true;
+      dotEl.classList.add("online");
+      connTextEl.textContent = "已連線";
+      log("MQTT 已連線");
 
-      for (const no of [1, 2]) {
-        client.subscribe(topic(no, "/state"));
-        client.subscribe(topic(no, "/auto/enabled/state"));
-        client.subscribe(topic(no, "/schedule/on/state"));
-        client.subscribe(topic(no, "/schedule/off/state"));
-      }
+      DEVICES.forEach(d => {
+        const tp = state[d.id].topics;
+        [tp.state, tp.autoState, tp.onState, tp.offState].forEach(topic => client.subscribe(topic));
+      });
+
+      renderAll();
     });
 
     client.on("reconnect", () => {
-      connStatus.innerText = "MQTT 重新連線中...";
+      isConnected = false;
+      dotEl.classList.remove("online");
+      connTextEl.textContent = "重新連線中";
+      renderAll();
+    });
+
+    client.on("close", () => {
+      isConnected = false;
+      dotEl.classList.remove("online");
+      connTextEl.textContent = "離線";
+      log("MQTT 已斷線");
+      renderAll();
     });
 
     client.on("offline", () => {
-      connStatus.innerText = "MQTT 已離線";
+      isConnected = false;
+      dotEl.classList.remove("online");
+      connTextEl.textContent = "離線";
+      renderAll();
     });
 
-    client.on("error", () => {
-      connStatus.innerText = "MQTT 連線錯誤";
+    client.on("error", (err) => {
+      log(`連線錯誤：${err.message}`);
     });
 
-    client.on("message", (receivedTopic, message) => {
-      const value = message.toString();
+    client.on("message", (topic, payloadBuf) => {
+      const payload = payloadBuf.toString();
 
-      for (const no of [1, 2]) {
-        const base = devices[no].base;
+      DEVICES.forEach(d => {
+        const s = state[d.id];
+        const tp = s.topics;
 
-        if (receivedTopic === base + "/state") {
-          devices[no].relayState = value;
-          updateRelayUI(no);
+        if (topic === tp.state) {
+          s.relay = payload.toUpperCase() === "ON" ? "ON" : "OFF";
+          renderState(d);
+        } else if (topic === tp.autoState) {
+          s.autoEnabled = ["1", "true", "on"].includes(payload.toLowerCase());
+          renderState(d);
+        } else if (topic === tp.onState) {
+          if (/^\d{2}:\d{2}$/.test(payload)) s.onTime = payload;
+          renderState(d);
+        } else if (topic === tp.offState) {
+          if (/^\d{2}:\d{2}$/.test(payload)) s.offTime = payload;
+          renderState(d);
         }
-
-        if (receivedTopic === base + "/auto/enabled/state") {
-          document.getElementById("autoEnabled" + no).checked =
-            (value === "1" || value === "ON" || value === "true");
-        }
-
-        if (receivedTopic === base + "/schedule/on/state") {
-          document.getElementById("onTime" + no).value = value;
-        }
-
-        if (receivedTopic === base + "/schedule/off/state") {
-          document.getElementById("offTime" + no).value = value;
-        }
-      }
+      });
     });
 
-    updateRelayUI(1);
-    updateRelayUI(2);
+    DEVICES.forEach(d => {
+      const s = state[d.id];
+      const tp = s.topics;
+
+      document.getElementById(`${d.id}_on`).addEventListener("click", () => {
+        if (!isConnected) {
+          log(`${d.name} → 目前離線，無法送出指令`);
+          return;
+        }
+
+        s.relay = "ON";
+        renderState(d);
+        client.publish(tp.set, "ON");
+        log(`${d.name} → 手動開啟`);
+      });
+
+      document.getElementById(`${d.id}_off`).addEventListener("click", () => {
+        if (!isConnected) {
+          log(`${d.name} → 目前離線，無法送出指令`);
+          return;
+        }
+
+        s.relay = "OFF";
+        renderState(d);
+        client.publish(tp.set, "OFF");
+        log(`${d.name} → 手動關閉`);
+      });
+
+      document.getElementById(`${d.id}_save`).addEventListener("click", () => {
+        if (!isConnected) {
+          log(`${d.name} → 目前離線，無法儲存設定`);
+          return;
+        }
+
+        const autoEnabled = document.getElementById(`${d.id}_auto`).checked;
+        const onTime = document.getElementById(`${d.id}_on_time`).value;
+        const offTime = document.getElementById(`${d.id}_off_time`).value;
+
+        if (!/^\d{2}:\d{2}$/.test(onTime) || !/^\d{2}:\d{2}$/.test(offTime)) {
+          log(`${d.name} → 時間格式錯誤，請使用 HH:MM`);
+          return;
+        }
+
+        s.autoEnabled = autoEnabled;
+        s.onTime = onTime;
+        s.offTime = offTime;
+        renderState(d);
+
+        client.publish(tp.autoSet, autoEnabled ? "true" : "false");
+        client.publish(tp.onSet, onTime);
+        client.publish(tp.offSet, offTime);
+
+        log(`${d.name} → 已送出排程設定（自動:${autoEnabled ? "啟用" : "停用"}，開:${onTime}，關:${offTime}）`);
+      });
+    });
+
+    renderAll();
   </script>
 </body>
 </html>
