@@ -39,7 +39,7 @@
     }
 
     .container {
-      max-width: 760px;
+      max-width: 860px;
       margin: 0 auto;
       display: grid;
       gap: 14px;
@@ -81,7 +81,7 @@
     .title-row {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       margin-bottom: 10px;
       gap: 10px;
     }
@@ -90,6 +90,7 @@
       display: flex;
       flex-direction: column;
       gap: 4px;
+      min-width: 0;
     }
 
     .device-meta {
@@ -131,7 +132,7 @@
       border: 1px solid var(--border);
       color: var(--text);
       font-size: 0.93rem;
-      line-height: 1.6;
+      line-height: 1.7;
     }
 
     .summary strong {
@@ -209,7 +210,7 @@
 
     @media (max-width: 560px) {
       .title-row {
-        align-items: flex-start;
+        flex-direction: column;
       }
 
       .badge-wrap {
@@ -244,8 +245,6 @@
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
     const MQTT_URL = "wss://broker.emqx.io:8084/mqtt";
-    const DEVICE_TIMEOUT_MS = 120000;
-
     const DEVICES = [
       { id: "switch01", name: "開關 1", base: "gavinwea414-a11y/esp-switch01/relay1" },
       { id: "switch02", name: "開關 2", base: "gavinwea414-a11y/esp-switch02/relay1" }
@@ -260,7 +259,7 @@
 
     function log(msg) {
       const ts = new Date().toLocaleTimeString("zh-TW", { hour12: false });
-      msgEl.textContent = `[${ts}] ${msg}\n` + msgEl.textContent.slice(0, 1800);
+      msgEl.textContent = `[${ts}] ${msg}\n` + msgEl.textContent.slice(0, 2500);
     }
 
     function formatNow() {
@@ -288,7 +287,10 @@
         onSet: t(base, "schedule/on/set"),
         onState: t(base, "schedule/on/state"),
         offSet: t(base, "schedule/off/set"),
-        offState: t(base, "schedule/off/state")
+        offState: t(base, "schedule/off/state"),
+        status: t(base, "status"),
+        heartbeat: t(base, "heartbeat"),
+        event: t(base, "event")
       };
     }
 
@@ -299,7 +301,9 @@
         onTime: "19:00",
         offTime: "23:30",
         lastUpdated: "尚未更新",
-        lastSeenMs: 0,
+        heartbeat: "尚未收到",
+        lastEvent: "尚未收到",
+        status: "offline",
         topics: getTopics(device.base),
         pendingSave: null
       };
@@ -319,6 +323,8 @@
 
         <div id="${device.id}_summary" class="summary">
           <div><strong>排程摘要：</strong>自動：啟用｜開 19:00｜關 23:30</div>
+          <div><strong>最後 heartbeat：</strong><span id="${device.id}_heartbeat">尚未收到</span></div>
+          <div><strong>最後事件：</strong><span id="${device.id}_event">尚未收到</span></div>
           <div id="${device.id}_updated" class="updated">最後更新：尚未更新</div>
         </div>
 
@@ -352,17 +358,12 @@
 
     function touchUpdated(device) {
       state[device.id].lastUpdated = formatNow();
-      state[device.id].lastSeenMs = Date.now();
-    }
-
-    function isDeviceOnline(device) {
-      const lastSeen = state[device.id].lastSeenMs || 0;
-      return lastSeen > 0 && (Date.now() - lastSeen) <= DEVICE_TIMEOUT_MS;
     }
 
     function renderDeviceOnline(device) {
+      const s = state[device.id];
       const badge = document.getElementById(`${device.id}_online`);
-      const online = isDeviceOnline(device);
+      const online = s.status === "online";
 
       badge.textContent = online ? "設備在線" : "設備離線";
       badge.className = `online-state ${online ? "online" : "offline"}`;
@@ -370,14 +371,12 @@
 
     function renderSummary(device) {
       const s = state[device.id];
-      const autoText = s.autoEnabled ? "啟用" : "停用";
-      const onText = s.onTime || "19:00";
-      const offText = s.offTime || "23:30";
-      const updatedText = s.lastUpdated || "尚未更新";
 
       document.getElementById(`${device.id}_summary`).innerHTML = `
-        <div><strong>排程摘要：</strong>自動：${autoText}｜開 ${onText}｜關 ${offText}</div>
-        <div id="${device.id}_updated" class="updated">最後更新：${updatedText}</div>
+        <div><strong>排程摘要：</strong>自動：${s.autoEnabled ? "啟用" : "停用"}｜開 ${s.onTime}｜關 ${s.offTime}</div>
+        <div><strong>最後 heartbeat：</strong><span id="${device.id}_heartbeat">${s.heartbeat}</span></div>
+        <div><strong>最後事件：</strong><span id="${device.id}_event">${s.lastEvent}</span></div>
+        <div id="${device.id}_updated" class="updated">最後更新：${s.lastUpdated}</div>
       `;
     }
 
@@ -409,9 +408,17 @@
       });
     }
 
-    function subscribeDeviceState(device) {
+    function subscribeDeviceTopics(device) {
       const tp = state[device.id].topics;
-      [tp.state, tp.autoState, tp.onState, tp.offState].forEach(topic => client.subscribe(topic));
+      [
+        tp.state,
+        tp.autoState,
+        tp.onState,
+        tp.offState,
+        tp.status,
+        tp.heartbeat,
+        tp.event
+      ].forEach(topic => client.subscribe(topic));
     }
 
     function sameTime(a, b) {
@@ -453,7 +460,7 @@
       connTextEl.textContent = "已連線";
       log("MQTT 已連線");
 
-      DEVICES.forEach(d => subscribeDeviceState(d));
+      DEVICES.forEach(d => subscribeDeviceTopics(d));
       renderAll();
     });
 
@@ -494,22 +501,52 @@
           s.relay = payload.toUpperCase() === "ON" ? "ON" : "OFF";
           touchUpdated(d);
           renderState(d);
-          checkPendingSave(d);
-        } else if (topic === tp.autoState) {
+          return;
+        }
+
+        if (topic === tp.autoState) {
           s.autoEnabled = ["1", "true", "on"].includes(payload.toLowerCase());
           touchUpdated(d);
           renderState(d);
           checkPendingSave(d);
-        } else if (topic === tp.onState) {
+          return;
+        }
+
+        if (topic === tp.onState) {
           if (/^\d{2}:\d{2}$/.test(payload)) s.onTime = payload;
           touchUpdated(d);
           renderState(d);
           checkPendingSave(d);
-        } else if (topic === tp.offState) {
+          return;
+        }
+
+        if (topic === tp.offState) {
           if (/^\d{2}:\d{2}$/.test(payload)) s.offTime = payload;
           touchUpdated(d);
           renderState(d);
           checkPendingSave(d);
+          return;
+        }
+
+        if (topic === tp.status) {
+          s.status = payload.toLowerCase() === "online" ? "online" : "offline";
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.heartbeat) {
+          s.heartbeat = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.event) {
+          s.lastEvent = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
         }
       });
     });
@@ -525,6 +562,7 @@
         }
 
         s.relay = "ON";
+        s.lastEvent = "manual_on (waiting)";
         touchUpdated(d);
         renderState(d);
         client.publish(tp.set, "ON");
@@ -538,6 +576,7 @@
         }
 
         s.relay = "OFF";
+        s.lastEvent = "manual_off (waiting)";
         touchUpdated(d);
         renderState(d);
         client.publish(tp.set, "OFF");
@@ -550,8 +589,8 @@
           return;
         }
 
-        subscribeDeviceState(d);
-        log(`${d.name} → 已重新訂閱狀態 topic，等待 retained 狀態同步`);
+        subscribeDeviceTopics(d);
+        log(`${d.name} → 已重新訂閱所有狀態 topic`);
       });
 
       document.getElementById(`${d.id}_save`).addEventListener("click", () => {
@@ -577,11 +616,7 @@
         s.autoEnabled = autoEnabled;
         s.onTime = onTime;
         s.offTime = offTime;
-        s.pendingSave = {
-          autoEnabled,
-          onTime,
-          offTime
-        };
+        s.pendingSave = { autoEnabled, onTime, offTime };
 
         touchUpdated(d);
         renderState(d);
@@ -594,23 +629,13 @@
       });
     });
 
-    setInterval(() => {
-      DEVICES.forEach(d => renderDeviceOnline(d));
-    }, 5000);
-
     renderAll();
-  </script>
 
-  <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("./service-worker.js")
-          .then(() => {
-            console.log("Service Worker 註冊成功");
-          })
-          .catch(err => {
-            console.error("Service Worker 註冊失敗:", err);
-          });
+          .then(() => console.log("Service Worker 註冊成功"))
+          .catch(err => console.error("Service Worker 註冊失敗:", err));
       });
     }
   </script>
