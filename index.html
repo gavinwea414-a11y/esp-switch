@@ -26,6 +26,7 @@
       --shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
       --disabled: #9ca3af;
       --secondary: #475569;
+      --info: #0f766e;
     }
 
     * { box-sizing: border-box; }
@@ -39,7 +40,7 @@
     }
 
     .container {
-      max-width: 860px;
+      max-width: 920px;
       margin: 0 auto;
       display: grid;
       gap: 14px;
@@ -108,7 +109,8 @@
     }
 
     .state,
-    .online-state {
+    .online-state,
+    .busy-state {
       padding: 4px 10px;
       border-radius: 999px;
       font-size: 0.88rem;
@@ -124,6 +126,9 @@
     .online-state.online { background: var(--success); }
     .online-state.offline { background: var(--warning); }
 
+    .busy-state.busy { background: var(--info); }
+    .busy-state.idle { background: var(--secondary); }
+
     .summary {
       margin: 8px 0 8px;
       padding: 10px 12px;
@@ -132,7 +137,7 @@
       border: 1px solid var(--border);
       color: var(--text);
       font-size: 0.93rem;
-      line-height: 1.7;
+      line-height: 1.75;
     }
 
     .summary strong {
@@ -208,6 +213,11 @@
       white-space: pre-wrap;
     }
 
+    .event-text {
+      font-weight: 700;
+      color: var(--info);
+    }
+
     @media (max-width: 560px) {
       .title-row {
         flex-direction: column;
@@ -245,6 +255,8 @@
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <script>
     const MQTT_URL = "wss://broker.emqx.io:8084/mqtt";
+    const ACTION_LOCK_MS = 1000;
+
     const DEVICES = [
       { id: "switch01", name: "開關 1", base: "gavinwea414-a11y/esp-switch01/relay1" },
       { id: "switch02", name: "開關 2", base: "gavinwea414-a11y/esp-switch02/relay1" }
@@ -259,7 +271,7 @@
 
     function log(msg) {
       const ts = new Date().toLocaleTimeString("zh-TW", { hour12: false });
-      msgEl.textContent = `[${ts}] ${msg}\n` + msgEl.textContent.slice(0, 2500);
+      msgEl.textContent = `[${ts}] ${msg}\n` + msgEl.textContent.slice(0, 3000);
     }
 
     function formatNow() {
@@ -294,6 +306,27 @@
       };
     }
 
+    function translateEvent(eventName) {
+      const map = {
+        boot: "設備開機",
+        manual_on: "手動開啟",
+        manual_off: "手動關閉",
+        manual_command_ignored: "手動命令過快，被忽略",
+        manual_on_same_state: "手動開啟，但原本已經是開啟",
+        manual_off_same_state: "手動關閉，但原本已經是關閉",
+        auto_enabled: "已啟用自動排程",
+        auto_disabled: "已停用自動排程",
+        schedule_on_updated: "已更新開啟排程時間",
+        schedule_off_updated: "已更新關閉排程時間",
+        schedule_on: "排程觸發開啟",
+        schedule_off: "排程觸發關閉",
+        schedule_on_same_state: "排程到開啟時間，但原本已經是開啟",
+        schedule_off_same_state: "排程到關閉時間，但原本已經是關閉"
+      };
+
+      return map[eventName] || eventName || "尚未收到";
+    }
+
     function buildCard(device, mountId) {
       state[device.id] = {
         relay: "OFF",
@@ -305,7 +338,8 @@
         lastEvent: "尚未收到",
         status: "offline",
         topics: getTopics(device.base),
-        pendingSave: null
+        pendingSave: null,
+        actionLockedUntil: 0
       };
 
       const mount = document.getElementById(mountId);
@@ -317,6 +351,7 @@
           </div>
           <div class="badge-wrap">
             <span id="${device.id}_online" class="online-state offline">設備離線</span>
+            <span id="${device.id}_busy" class="busy-state idle">可操作</span>
             <span id="${device.id}_state" class="state off">關閉</span>
           </div>
         </div>
@@ -324,7 +359,7 @@
         <div id="${device.id}_summary" class="summary">
           <div><strong>排程摘要：</strong>自動：啟用｜開 19:00｜關 23:30</div>
           <div><strong>最後 heartbeat：</strong><span id="${device.id}_heartbeat">尚未收到</span></div>
-          <div><strong>最後事件：</strong><span id="${device.id}_event">尚未收到</span></div>
+          <div><strong>最後事件：</strong><span id="${device.id}_event" class="event-text">尚未收到</span></div>
           <div id="${device.id}_updated" class="updated">最後更新：尚未更新</div>
         </div>
 
@@ -360,6 +395,24 @@
       state[device.id].lastUpdated = formatNow();
     }
 
+    function isBusy(device) {
+      return Date.now() < (state[device.id].actionLockedUntil || 0);
+    }
+
+    function lockActions(device, ms = ACTION_LOCK_MS) {
+      state[device.id].actionLockedUntil = Date.now() + ms;
+      renderBusy(device);
+      setControlsEnabled(isConnected);
+    }
+
+    function renderBusy(device) {
+      const busyEl = document.getElementById(`${device.id}_busy`);
+      const busy = isBusy(device);
+
+      busyEl.textContent = busy ? "處理中" : "可操作";
+      busyEl.className = `busy-state ${busy ? "busy" : "idle"}`;
+    }
+
     function renderDeviceOnline(device) {
       const s = state[device.id];
       const badge = document.getElementById(`${device.id}_online`);
@@ -375,7 +428,7 @@
       document.getElementById(`${device.id}_summary`).innerHTML = `
         <div><strong>排程摘要：</strong>自動：${s.autoEnabled ? "啟用" : "停用"}｜開 ${s.onTime}｜關 ${s.offTime}</div>
         <div><strong>最後 heartbeat：</strong><span id="${device.id}_heartbeat">${s.heartbeat}</span></div>
-        <div><strong>最後事件：</strong><span id="${device.id}_event">${s.lastEvent}</span></div>
+        <div><strong>最後事件：</strong><span id="${device.id}_event" class="event-text">${translateEvent(s.lastEvent)}</span></div>
         <div id="${device.id}_updated" class="updated">最後更新：${s.lastUpdated}</div>
       `;
     }
@@ -394,17 +447,21 @@
 
       renderSummary(device);
       renderDeviceOnline(device);
+      renderBusy(device);
     }
 
     function setControlsEnabled(enabled) {
       DEVICES.forEach(d => {
-        document.getElementById(`${d.id}_on`).disabled = !enabled;
-        document.getElementById(`${d.id}_off`).disabled = !enabled;
+        const locked = isBusy(d);
+        const canUse = enabled && !locked;
+
+        document.getElementById(`${d.id}_on`).disabled = !canUse;
+        document.getElementById(`${d.id}_off`).disabled = !canUse;
         document.getElementById(`${d.id}_sync`).disabled = !enabled;
-        document.getElementById(`${d.id}_auto`).disabled = !enabled;
-        document.getElementById(`${d.id}_on_time`).disabled = !enabled;
-        document.getElementById(`${d.id}_off_time`).disabled = !enabled;
-        document.getElementById(`${d.id}_save`).disabled = !enabled;
+        document.getElementById(`${d.id}_auto`).disabled = !canUse;
+        document.getElementById(`${d.id}_on_time`).disabled = !canUse;
+        document.getElementById(`${d.id}_off_time`).disabled = !canUse;
+        document.getElementById(`${d.id}_save`).disabled = !canUse;
       });
     }
 
@@ -501,6 +558,7 @@
           s.relay = payload.toUpperCase() === "ON" ? "ON" : "OFF";
           touchUpdated(d);
           renderState(d);
+          setControlsEnabled(isConnected);
           return;
         }
 
@@ -509,6 +567,7 @@
           touchUpdated(d);
           renderState(d);
           checkPendingSave(d);
+          setControlsEnabled(isConnected);
           return;
         }
 
@@ -517,6 +576,7 @@
           touchUpdated(d);
           renderState(d);
           checkPendingSave(d);
+          setControlsEnabled(isConnected);
           return;
         }
 
@@ -525,6 +585,7 @@
           touchUpdated(d);
           renderState(d);
           checkPendingSave(d);
+          setControlsEnabled(isConnected);
           return;
         }
 
@@ -560,9 +621,12 @@
           log(`${d.name} → 目前離線，無法送出指令`);
           return;
         }
+        if (isBusy(d)) return;
+
+        lockActions(d);
 
         s.relay = "ON";
-        s.lastEvent = "manual_on (waiting)";
+        s.lastEvent = "manual_on";
         touchUpdated(d);
         renderState(d);
         client.publish(tp.set, "ON");
@@ -574,9 +638,12 @@
           log(`${d.name} → 目前離線，無法送出指令`);
           return;
         }
+        if (isBusy(d)) return;
+
+        lockActions(d);
 
         s.relay = "OFF";
-        s.lastEvent = "manual_off (waiting)";
+        s.lastEvent = "manual_off";
         touchUpdated(d);
         renderState(d);
         client.publish(tp.set, "OFF");
@@ -598,6 +665,7 @@
           log(`${d.name} → 目前離線，無法儲存設定`);
           return;
         }
+        if (isBusy(d)) return;
 
         const autoEnabled = document.getElementById(`${d.id}_auto`).checked;
         const onTime = document.getElementById(`${d.id}_on_time`).value;
@@ -613,10 +681,13 @@
           return;
         }
 
+        lockActions(d);
+
         s.autoEnabled = autoEnabled;
         s.onTime = onTime;
         s.offTime = offTime;
         s.pendingSave = { autoEnabled, onTime, offTime };
+        s.lastEvent = "schedule_on_updated";
 
         touchUpdated(d);
         renderState(d);
@@ -628,6 +699,11 @@
         log(`${d.name} → 設定送出中，等待設備確認…`);
       });
     });
+
+    setInterval(() => {
+      DEVICES.forEach(d => renderBusy(d));
+      setControlsEnabled(isConnected);
+    }, 250);
 
     renderAll();
 
