@@ -185,6 +185,7 @@
     .btn-sync { background: var(--secondary); color: #fff; }
     .btn-export { background: #0f766e; color: #fff; }
     .btn-import { background: #7c3aed; color: #fff; }
+    .btn-clear { background: #b45309; color: #fff; }
 
     .line {
       display: flex;
@@ -278,11 +279,13 @@
       <div class="btn-row">
         <button class="btn-export" id="exportBtn">匯出目前設定</button>
         <button class="btn-import" id="importBtn">套用備份設定</button>
+        <button class="btn-clear" id="clearLocalBtn">清除本機自動保存</button>
       </div>
       <textarea id="backupText" placeholder="按『匯出目前設定』後，這裡會出現備份 JSON；也可以把舊備份貼到這裡再按『套用備份設定』。"></textarea>
       <div class="hint">
         備份內容只包含兩台設備的排程相關設定：是否啟用自動排程、開啟時間、關閉時間。<br>
-        還原時會透過 MQTT 寫回設備，所以設備必須在線、且 MQTT 必須已連線。
+        還原時會透過 MQTT 寫回設備，所以設備必須在線、且 MQTT 必須已連線。<br>
+        此頁也會自動把最近一次設定保存到本機瀏覽器。
       </div>
     </div>
 
@@ -296,6 +299,7 @@
   <script>
     const MQTT_URL = "wss://broker.emqx.io:8084/mqtt";
     const ACTION_LOCK_MS = 1000;
+    const LOCAL_BACKUP_KEY = "esp_switch_local_backup_v1";
 
     const DEVICES = [
       { id: "switch01", name: "開關 1", base: "gavinwea414-a11y/esp-switch01/relay1" },
@@ -311,6 +315,7 @@
     const backupTextEl = document.getElementById("backupText");
     const exportBtnEl = document.getElementById("exportBtn");
     const importBtnEl = document.getElementById("importBtn");
+    const clearLocalBtnEl = document.getElementById("clearLocalBtn");
 
     function log(msg) {
       const ts = new Date().toLocaleTimeString("zh-TW", { hour12: false });
@@ -509,6 +514,7 @@
 
       exportBtnEl.disabled = !enabled;
       importBtnEl.disabled = !enabled;
+      clearLocalBtnEl.disabled = false;
     }
 
     function subscribeDeviceTopics(device) {
@@ -540,6 +546,7 @@
       if (autoMatched && onMatched && offMatched) {
         log(`${device.name} → 設定已確認儲存`);
         s.pendingSave = null;
+        saveLocalBackup();
       }
     }
 
@@ -548,8 +555,8 @@
       setControlsEnabled(isConnected);
     }
 
-    function exportBackup() {
-      const backup = {
+    function createBackupObject() {
+      return {
         version: 1,
         exportedAt: new Date().toISOString(),
         devices: DEVICES.map(d => ({
@@ -561,7 +568,10 @@
           offTime: state[d.id].offTime
         }))
       };
+    }
 
+    function exportBackup() {
+      const backup = createBackupObject();
       backupTextEl.value = JSON.stringify(backup, null, 2);
       log("已匯出目前設定");
     }
@@ -590,6 +600,12 @@
         document.getElementById(`${device.id}_auto`).checked = !!item.autoEnabled;
         document.getElementById(`${device.id}_on_time`).value = item.onTime;
         document.getElementById(`${device.id}_off_time`).value = item.offTime;
+
+        state[device.id].autoEnabled = !!item.autoEnabled;
+        state[device.id].onTime = item.onTime;
+        state[device.id].offTime = item.offTime;
+        touchUpdated(device);
+        renderState(device);
       }
     }
 
@@ -647,9 +663,53 @@
         publishDeviceSettings(device, item.autoEnabled, item.onTime, item.offTime);
         log(`${device.name} → 已送出備份還原設定，等待設備確認…`);
       }
+
+      saveLocalBackup(parsed);
+    }
+
+    function saveLocalBackup(backupObj = null) {
+      try {
+        const obj = backupObj || createBackupObject();
+        localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(obj));
+      } catch (err) {
+        console.error("localStorage 保存失敗", err);
+      }
+    }
+
+    function loadLocalBackup() {
+      try {
+        const raw = localStorage.getItem(LOCAL_BACKUP_KEY);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw);
+        const errMsg = validateBackupObject(parsed);
+        if (errMsg) {
+          console.warn("localStorage 備份格式無效：", errMsg);
+          return null;
+        }
+        return parsed;
+      } catch (err) {
+        console.error("localStorage 讀取失敗", err);
+        return null;
+      }
+    }
+
+    function restoreLocalBackupToPage() {
+      const backup = loadLocalBackup();
+      if (!backup) return;
+
+      applyBackupToUI(backup);
+      backupTextEl.value = JSON.stringify(backup, null, 2);
+      log("已從本機自動保存恢復最近設定");
+    }
+
+    function clearLocalBackup() {
+      localStorage.removeItem(LOCAL_BACKUP_KEY);
+      log("已清除本機自動保存");
     }
 
     DEVICES.forEach((d, idx) => buildCard(d, idx === 0 ? "card1" : "card2"));
+    restoreLocalBackupToPage();
 
     const client = mqtt.connect(MQTT_URL, {
       clientId: `web-esp-switch-${Math.random().toString(16).slice(2, 10)}`,
@@ -831,12 +891,18 @@
         lockActions(d);
 
         publishDeviceSettings(d, autoEnabled, onTime, offTime);
+        saveLocalBackup();
         log(`${d.name} → 設定送出中，等待設備確認…`);
       });
+
+      document.getElementById(`${d.id}_auto`).addEventListener("change", saveLocalBackup);
+      document.getElementById(`${d.id}_on_time`).addEventListener("change", saveLocalBackup);
+      document.getElementById(`${d.id}_off_time`).addEventListener("change", saveLocalBackup);
     });
 
     exportBtnEl.addEventListener("click", exportBackup);
     importBtnEl.addEventListener("click", importBackup);
+    clearLocalBtnEl.addEventListener("click", clearLocalBackup);
 
     setInterval(() => {
       DEVICES.forEach(d => renderBusy(d));
