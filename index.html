@@ -59,6 +59,11 @@
       font-size: 1.35rem;
     }
 
+    h2 {
+      margin: 0 0 10px;
+      font-size: 1.02rem;
+    }
+
     .status-bar {
       display: flex;
       align-items: center;
@@ -178,6 +183,8 @@
     .btn-off { background: #ef4444; color: #fff; }
     .btn-save { background: var(--primary); color: #fff; width: 100%; margin-top: 10px; }
     .btn-sync { background: var(--secondary); color: #fff; }
+    .btn-export { background: #0f766e; color: #fff; }
+    .btn-import { background: #7c3aed; color: #fff; }
 
     .line {
       display: flex;
@@ -204,6 +211,26 @@
 
     input[type="checkbox"] {
       transform: scale(1.2);
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 170px;
+      resize: vertical;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      font-size: 0.94rem;
+      font-family: Consolas, Monaco, monospace;
+      background: #fff;
+      color: var(--text);
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.6;
+      margin-top: 6px;
     }
 
     .msg {
@@ -247,6 +274,19 @@
     <div id="card2" class="card"></div>
 
     <div class="card">
+      <h2>設定備份 / 還原</h2>
+      <div class="btn-row">
+        <button class="btn-export" id="exportBtn">匯出目前設定</button>
+        <button class="btn-import" id="importBtn">套用備份設定</button>
+      </div>
+      <textarea id="backupText" placeholder="按『匯出目前設定』後，這裡會出現備份 JSON；也可以把舊備份貼到這裡再按『套用備份設定』。"></textarea>
+      <div class="hint">
+        備份內容只包含兩台設備的排程相關設定：是否啟用自動排程、開啟時間、關閉時間。<br>
+        還原時會透過 MQTT 寫回設備，所以設備必須在線、且 MQTT 必須已連線。
+      </div>
+    </div>
+
+    <div class="card">
       <strong>訊息提示</strong>
       <div id="msg" class="msg">等待連線…</div>
     </div>
@@ -268,6 +308,9 @@
     const msgEl = document.getElementById("msg");
     const dotEl = document.getElementById("dot");
     const connTextEl = document.getElementById("connText");
+    const backupTextEl = document.getElementById("backupText");
+    const exportBtnEl = document.getElementById("exportBtn");
+    const importBtnEl = document.getElementById("importBtn");
 
     function log(msg) {
       const ts = new Date().toLocaleTimeString("zh-TW", { hour12: false });
@@ -463,6 +506,9 @@
         document.getElementById(`${d.id}_off_time`).disabled = !canUse;
         document.getElementById(`${d.id}_save`).disabled = !canUse;
       });
+
+      exportBtnEl.disabled = !enabled;
+      importBtnEl.disabled = !enabled;
     }
 
     function subscribeDeviceTopics(device) {
@@ -500,6 +546,107 @@
     function renderAll() {
       DEVICES.forEach(d => renderState(d));
       setControlsEnabled(isConnected);
+    }
+
+    function exportBackup() {
+      const backup = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        devices: DEVICES.map(d => ({
+          id: d.id,
+          name: d.name,
+          base: d.base,
+          autoEnabled: !!state[d.id].autoEnabled,
+          onTime: state[d.id].onTime,
+          offTime: state[d.id].offTime
+        }))
+      };
+
+      backupTextEl.value = JSON.stringify(backup, null, 2);
+      log("已匯出目前設定");
+    }
+
+    function validateBackupObject(obj) {
+      if (!obj || typeof obj !== "object") return "備份格式不是物件";
+      if (!Array.isArray(obj.devices)) return "備份缺少 devices";
+      if (obj.devices.length !== DEVICES.length) return "備份設備數量不符";
+
+      for (const device of obj.devices) {
+        if (typeof device.id !== "string") return "設備 id 格式錯誤";
+        if (typeof device.autoEnabled !== "boolean") return `設備 ${device.id} 的 autoEnabled 格式錯誤`;
+        if (!/^\d{2}:\d{2}$/.test(device.onTime || "")) return `設備 ${device.id} 的 onTime 格式錯誤`;
+        if (!/^\d{2}:\d{2}$/.test(device.offTime || "")) return `設備 ${device.id} 的 offTime 格式錯誤`;
+        if (device.onTime === device.offTime) return `設備 ${device.id} 的開啟時間與關閉時間不能相同`;
+      }
+
+      return "";
+    }
+
+    function applyBackupToUI(obj) {
+      for (const item of obj.devices) {
+        const device = DEVICES.find(d => d.id === item.id);
+        if (!device) continue;
+
+        document.getElementById(`${device.id}_auto`).checked = !!item.autoEnabled;
+        document.getElementById(`${device.id}_on_time`).value = item.onTime;
+        document.getElementById(`${device.id}_off_time`).value = item.offTime;
+      }
+    }
+
+    function publishDeviceSettings(device, autoEnabled, onTime, offTime) {
+      const s = state[device.id];
+      const tp = s.topics;
+
+      s.autoEnabled = autoEnabled;
+      s.onTime = onTime;
+      s.offTime = offTime;
+      s.pendingSave = { autoEnabled, onTime, offTime };
+      s.lastEvent = "schedule_on_updated";
+
+      touchUpdated(device);
+      renderState(device);
+
+      client.publish(tp.autoSet, autoEnabled ? "true" : "false");
+      client.publish(tp.onSet, onTime);
+      client.publish(tp.offSet, offTime);
+    }
+
+    function importBackup() {
+      if (!isConnected) {
+        log("目前離線，無法套用備份設定");
+        return;
+      }
+
+      const raw = backupTextEl.value.trim();
+      if (!raw) {
+        log("請先貼上備份內容");
+        return;
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        log("備份 JSON 格式錯誤");
+        return;
+      }
+
+      const errMsg = validateBackupObject(parsed);
+      if (errMsg) {
+        log(`備份驗證失敗：${errMsg}`);
+        return;
+      }
+
+      applyBackupToUI(parsed);
+
+      for (const item of parsed.devices) {
+        const device = DEVICES.find(d => d.id === item.id);
+        if (!device) continue;
+
+        lockActions(device, 1200);
+        publishDeviceSettings(device, item.autoEnabled, item.onTime, item.offTime);
+        log(`${device.name} → 已送出備份還原設定，等待設備確認…`);
+      }
     }
 
     DEVICES.forEach((d, idx) => buildCard(d, idx === 0 ? "card1" : "card2"));
@@ -683,22 +830,13 @@
 
         lockActions(d);
 
-        s.autoEnabled = autoEnabled;
-        s.onTime = onTime;
-        s.offTime = offTime;
-        s.pendingSave = { autoEnabled, onTime, offTime };
-        s.lastEvent = "schedule_on_updated";
-
-        touchUpdated(d);
-        renderState(d);
-
-        client.publish(tp.autoSet, autoEnabled ? "true" : "false");
-        client.publish(tp.onSet, onTime);
-        client.publish(tp.offSet, offTime);
-
+        publishDeviceSettings(d, autoEnabled, onTime, offTime);
         log(`${d.name} → 設定送出中，等待設備確認…`);
       });
     });
+
+    exportBtnEl.addEventListener("click", exportBackup);
+    importBtnEl.addEventListener("click", importBackup);
 
     setInterval(() => {
       DEVICES.forEach(d => renderBusy(d));
