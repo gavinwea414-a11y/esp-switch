@@ -300,7 +300,7 @@
   <script>
     const MQTT_URL = "wss://broker.emqx.io:8084/mqtt";
     const ACTION_LOCK_MS = 1000;
-    const LOCAL_BACKUP_KEY = "esp_switch_local_backup_v2";
+    const LOCAL_BACKUP_KEY = "esp_switch_local_backup_v3";
 
     const TIMEZONE_OPTIONS = {
       "8": "UTC+8（台灣 / 香港）",
@@ -358,7 +358,8 @@
         timezoneState: t(base, "timezone/state"),
         status: t(base, "status"),
         heartbeat: t(base, "heartbeat"),
-        event: t(base, "event")
+        event: t(base, "event"),
+        eventTime: t(base, "event_time")
       };
     }
 
@@ -407,6 +408,7 @@
         lastUpdated: "尚未更新",
         heartbeat: "尚未收到",
         lastEvent: "尚未收到",
+        lastEventTime: "尚未收到",
         status: "offline",
         topics: getTopics(device.base),
         pendingSave: null,
@@ -431,6 +433,7 @@
           <div><strong>排程摘要：</strong>自動：啟用｜開 19:00｜關 23:30｜時區 UTC+9（日本）</div>
           <div><strong>最後 heartbeat：</strong><span id="${device.id}_heartbeat">尚未收到</span></div>
           <div><strong>最後事件：</strong><span id="${device.id}_event" class="event-text">尚未收到</span></div>
+          <div><strong>最後事件時間：</strong><span id="${device.id}_event_time">尚未收到</span></div>
           <div id="${device.id}_updated" class="updated">最後更新：尚未更新</div>
         </div>
 
@@ -505,6 +508,7 @@
         <div><strong>排程摘要：</strong>自動：${s.autoEnabled ? "啟用" : "停用"}｜開 ${s.onTime}｜關 ${s.offTime}｜時區 ${timezoneLabel(s.timezone)}</div>
         <div><strong>最後 heartbeat：</strong><span id="${device.id}_heartbeat">${s.heartbeat}</span></div>
         <div><strong>最後事件：</strong><span id="${device.id}_event" class="event-text">${translateEvent(s.lastEvent)}</span></div>
+        <div><strong>最後事件時間：</strong><span id="${device.id}_event_time">${s.lastEventTime}</span></div>
         <div id="${device.id}_updated" class="updated">最後更新：${s.lastUpdated}</div>
       `;
     }
@@ -557,7 +561,8 @@
         tp.timezoneState,
         tp.status,
         tp.heartbeat,
-        tp.event
+        tp.event,
+        tp.eventTime
       ].forEach(topic => client.subscribe(topic));
     }
 
@@ -589,7 +594,7 @@
 
     function createBackupObject() {
       return {
-        version: 2,
+        version: 3,
         exportedAt: new Date().toISOString(),
         devices: DEVICES.map(d => ({
           id: d.id,
@@ -857,6 +862,13 @@
 
         if (topic === tp.event) {
           s.lastEvent = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.eventTime) {
+          s.lastEventTime = payload;
           touchUpdated(d);
           renderState(d);
           return;
