@@ -196,8 +196,8 @@
       font-size: 0.95rem;
     }
 
-    input[type="time"] {
-      width: 120px;
+    input[type="time"], select {
+      width: 150px;
       padding: 8px;
       border: 1px solid var(--border);
       border-radius: 10px;
@@ -206,7 +206,8 @@
     }
 
     input[type="time"]:disabled,
-    input[type="checkbox"]:disabled {
+    input[type="checkbox"]:disabled,
+    select:disabled {
       opacity: 0.6;
     }
 
@@ -283,7 +284,7 @@
       </div>
       <textarea id="backupText" placeholder="按『匯出目前設定』後，這裡會出現備份 JSON；也可以把舊備份貼到這裡再按『套用備份設定』。"></textarea>
       <div class="hint">
-        備份內容只包含兩台設備的排程相關設定：是否啟用自動排程、開啟時間、關閉時間。<br>
+        備份內容包含：是否啟用自動排程、開啟時間、關閉時間、時區。<br>
         還原時會透過 MQTT 寫回設備，所以設備必須在線、且 MQTT 必須已連線。<br>
         此頁也會自動把最近一次設定保存到本機瀏覽器。
       </div>
@@ -299,7 +300,12 @@
   <script>
     const MQTT_URL = "wss://broker.emqx.io:8084/mqtt";
     const ACTION_LOCK_MS = 1000;
-    const LOCAL_BACKUP_KEY = "esp_switch_local_backup_v1";
+    const LOCAL_BACKUP_KEY = "esp_switch_local_backup_v2";
+
+    const TIMEZONE_OPTIONS = {
+      "8": "UTC+8（台灣 / 香港）",
+      "9": "UTC+9（日本）"
+    };
 
     const DEVICES = [
       { id: "switch01", name: "開關 1", base: "gavinwea414-a11y/esp-switch01/relay1" },
@@ -348,6 +354,8 @@
         onState: t(base, "schedule/on/state"),
         offSet: t(base, "schedule/off/set"),
         offState: t(base, "schedule/off/state"),
+        timezoneSet: t(base, "timezone/set"),
+        timezoneState: t(base, "timezone/state"),
         status: t(base, "status"),
         heartbeat: t(base, "heartbeat"),
         event: t(base, "event")
@@ -369,10 +377,24 @@
         schedule_on: "排程觸發開啟",
         schedule_off: "排程觸發關閉",
         schedule_on_same_state: "排程到開啟時間，但原本已經是開啟",
-        schedule_off_same_state: "排程到關閉時間，但原本已經是關閉"
+        schedule_off_same_state: "排程到關閉時間，但原本已經是關閉",
+        timezone_updated: "已更新時區"
       };
 
       return map[eventName] || eventName || "尚未收到";
+    }
+
+    function timezoneLabel(value) {
+      return TIMEZONE_OPTIONS[String(value)] || `UTC+${value}`;
+    }
+
+    function buildTimezoneSelect(id, selected) {
+      return `
+        <select id="${id}">
+          <option value="8" ${String(selected) === "8" ? "selected" : ""}>UTC+8（台灣 / 香港）</option>
+          <option value="9" ${String(selected) === "9" ? "selected" : ""}>UTC+9（日本）</option>
+        </select>
+      `;
     }
 
     function buildCard(device, mountId) {
@@ -381,6 +403,7 @@
         autoEnabled: true,
         onTime: "19:00",
         offTime: "23:30",
+        timezone: "9",
         lastUpdated: "尚未更新",
         heartbeat: "尚未收到",
         lastEvent: "尚未收到",
@@ -405,7 +428,7 @@
         </div>
 
         <div id="${device.id}_summary" class="summary">
-          <div><strong>排程摘要：</strong>自動：啟用｜開 19:00｜關 23:30</div>
+          <div><strong>排程摘要：</strong>自動：啟用｜開 19:00｜關 23:30｜時區 UTC+9（日本）</div>
           <div><strong>最後 heartbeat：</strong><span id="${device.id}_heartbeat">尚未收到</span></div>
           <div><strong>最後事件：</strong><span id="${device.id}_event" class="event-text">尚未收到</span></div>
           <div id="${device.id}_updated" class="updated">最後更新：尚未更新</div>
@@ -433,6 +456,11 @@
         <div class="line">
           <label for="${device.id}_off_time">關閉時間</label>
           <input type="time" id="${device.id}_off_time" value="23:30" />
+        </div>
+
+        <div class="line">
+          <label for="${device.id}_timezone">時區</label>
+          ${buildTimezoneSelect(`${device.id}_timezone`, "9")}
         </div>
 
         <button class="btn-save" id="${device.id}_save">儲存設定</button>
@@ -474,7 +502,7 @@
       const s = state[device.id];
 
       document.getElementById(`${device.id}_summary`).innerHTML = `
-        <div><strong>排程摘要：</strong>自動：${s.autoEnabled ? "啟用" : "停用"}｜開 ${s.onTime}｜關 ${s.offTime}</div>
+        <div><strong>排程摘要：</strong>自動：${s.autoEnabled ? "啟用" : "停用"}｜開 ${s.onTime}｜關 ${s.offTime}｜時區 ${timezoneLabel(s.timezone)}</div>
         <div><strong>最後 heartbeat：</strong><span id="${device.id}_heartbeat">${s.heartbeat}</span></div>
         <div><strong>最後事件：</strong><span id="${device.id}_event" class="event-text">${translateEvent(s.lastEvent)}</span></div>
         <div id="${device.id}_updated" class="updated">最後更新：${s.lastUpdated}</div>
@@ -492,6 +520,7 @@
       document.getElementById(`${device.id}_auto`).checked = !!s.autoEnabled;
       document.getElementById(`${device.id}_on_time`).value = s.onTime || "19:00";
       document.getElementById(`${device.id}_off_time`).value = s.offTime || "23:30";
+      document.getElementById(`${device.id}_timezone`).value = String(s.timezone || "9");
 
       renderSummary(device);
       renderDeviceOnline(device);
@@ -509,6 +538,7 @@
         document.getElementById(`${d.id}_auto`).disabled = !canUse;
         document.getElementById(`${d.id}_on_time`).disabled = !canUse;
         document.getElementById(`${d.id}_off_time`).disabled = !canUse;
+        document.getElementById(`${d.id}_timezone`).disabled = !canUse;
         document.getElementById(`${d.id}_save`).disabled = !canUse;
       });
 
@@ -524,6 +554,7 @@
         tp.autoState,
         tp.onState,
         tp.offState,
+        tp.timezoneState,
         tp.status,
         tp.heartbeat,
         tp.event
@@ -542,8 +573,9 @@
       const autoMatched = s.autoEnabled === p.autoEnabled;
       const onMatched = s.onTime === p.onTime;
       const offMatched = s.offTime === p.offTime;
+      const tzMatched = String(s.timezone) === String(p.timezone);
 
-      if (autoMatched && onMatched && offMatched) {
+      if (autoMatched && onMatched && offMatched && tzMatched) {
         log(`${device.name} → 設定已確認儲存`);
         s.pendingSave = null;
         saveLocalBackup();
@@ -557,7 +589,7 @@
 
     function createBackupObject() {
       return {
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
         devices: DEVICES.map(d => ({
           id: d.id,
@@ -565,7 +597,8 @@
           base: d.base,
           autoEnabled: !!state[d.id].autoEnabled,
           onTime: state[d.id].onTime,
-          offTime: state[d.id].offTime
+          offTime: state[d.id].offTime,
+          timezone: String(state[d.id].timezone)
         }))
       };
     }
@@ -587,6 +620,7 @@
         if (!/^\d{2}:\d{2}$/.test(device.onTime || "")) return `設備 ${device.id} 的 onTime 格式錯誤`;
         if (!/^\d{2}:\d{2}$/.test(device.offTime || "")) return `設備 ${device.id} 的 offTime 格式錯誤`;
         if (device.onTime === device.offTime) return `設備 ${device.id} 的開啟時間與關閉時間不能相同`;
+        if (!["8", "9", 8, 9].includes(device.timezone)) return `設備 ${device.id} 的時區格式錯誤`;
       }
 
       return "";
@@ -600,23 +634,26 @@
         document.getElementById(`${device.id}_auto`).checked = !!item.autoEnabled;
         document.getElementById(`${device.id}_on_time`).value = item.onTime;
         document.getElementById(`${device.id}_off_time`).value = item.offTime;
+        document.getElementById(`${device.id}_timezone`).value = String(item.timezone);
 
         state[device.id].autoEnabled = !!item.autoEnabled;
         state[device.id].onTime = item.onTime;
         state[device.id].offTime = item.offTime;
+        state[device.id].timezone = String(item.timezone);
         touchUpdated(device);
         renderState(device);
       }
     }
 
-    function publishDeviceSettings(device, autoEnabled, onTime, offTime) {
+    function publishDeviceSettings(device, autoEnabled, onTime, offTime, timezone) {
       const s = state[device.id];
       const tp = s.topics;
 
       s.autoEnabled = autoEnabled;
       s.onTime = onTime;
       s.offTime = offTime;
-      s.pendingSave = { autoEnabled, onTime, offTime };
+      s.timezone = String(timezone);
+      s.pendingSave = { autoEnabled, onTime, offTime, timezone: String(timezone) };
       s.lastEvent = "schedule_on_updated";
 
       touchUpdated(device);
@@ -625,6 +662,7 @@
       client.publish(tp.autoSet, autoEnabled ? "true" : "false");
       client.publish(tp.onSet, onTime);
       client.publish(tp.offSet, offTime);
+      client.publish(tp.timezoneSet, String(timezone));
     }
 
     function importBackup() {
@@ -660,7 +698,7 @@
         if (!device) continue;
 
         lockActions(device, 1200);
-        publishDeviceSettings(device, item.autoEnabled, item.onTime, item.offTime);
+        publishDeviceSettings(device, item.autoEnabled, item.onTime, item.offTime, item.timezone);
         log(`${device.name} → 已送出備份還原設定，等待設備確認…`);
       }
 
@@ -683,13 +721,9 @@
 
         const parsed = JSON.parse(raw);
         const errMsg = validateBackupObject(parsed);
-        if (errMsg) {
-          console.warn("localStorage 備份格式無效：", errMsg);
-          return null;
-        }
+        if (errMsg) return null;
         return parsed;
       } catch (err) {
-        console.error("localStorage 讀取失敗", err);
         return null;
       }
     }
@@ -796,6 +830,17 @@
           return;
         }
 
+        if (topic === tp.timezoneState) {
+          if (["8", "9"].includes(String(payload).trim())) {
+            s.timezone = String(payload).trim();
+          }
+          touchUpdated(d);
+          renderState(d);
+          checkPendingSave(d);
+          setControlsEnabled(isConnected);
+          return;
+        }
+
         if (topic === tp.status) {
           s.status = payload.toLowerCase() === "online" ? "online" : "offline";
           touchUpdated(d);
@@ -877,6 +922,7 @@
         const autoEnabled = document.getElementById(`${d.id}_auto`).checked;
         const onTime = document.getElementById(`${d.id}_on_time`).value;
         const offTime = document.getElementById(`${d.id}_off_time`).value;
+        const timezone = document.getElementById(`${d.id}_timezone`).value;
 
         if (!/^\d{2}:\d{2}$/.test(onTime) || !/^\d{2}:\d{2}$/.test(offTime)) {
           log(`${d.name} → 時間格式錯誤，請使用 HH:MM`);
@@ -888,9 +934,13 @@
           return;
         }
 
-        lockActions(d);
+        if (!["8", "9"].includes(String(timezone))) {
+          log(`${d.name} → 時區設定錯誤`);
+          return;
+        }
 
-        publishDeviceSettings(d, autoEnabled, onTime, offTime);
+        lockActions(d);
+        publishDeviceSettings(d, autoEnabled, onTime, offTime, timezone);
         saveLocalBackup();
         log(`${d.name} → 設定送出中，等待設備確認…`);
       });
@@ -898,6 +948,7 @@
       document.getElementById(`${d.id}_auto`).addEventListener("change", saveLocalBackup);
       document.getElementById(`${d.id}_on_time`).addEventListener("change", saveLocalBackup);
       document.getElementById(`${d.id}_off_time`).addEventListener("change", saveLocalBackup);
+      document.getElementById(`${d.id}_timezone`).addEventListener("change", saveLocalBackup);
     });
 
     exportBtnEl.addEventListener("click", exportBackup);
