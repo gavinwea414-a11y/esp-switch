@@ -443,7 +443,7 @@
         </div>
 
         <div class="btn-row">
-          <button class="btn-sync" id="${device.id}_sync">重新同步狀態</button>
+          <button class="btn-sync" id="${device.id}_sync">重新整理狀態</button>
         </div>
 
         <div class="line">
@@ -916,12 +916,12 @@
 
       document.getElementById(`${d.id}_sync`).addEventListener("click", () => {
         if (!isConnected) {
-          log(`${d.name} → 目前離線，無法重新同步`);
+          log(`${d.name} → 目前離線，無法重新整理狀態`);
           return;
         }
 
         subscribeDeviceTopics(d);
-        log(`${d.name} → 已重新訂閱所有狀態 topic`);
+        log(`${d.name} → 已重新整理狀態`);
       });
 
       document.getElementById(`${d.id}_save`).addEventListener("click", () => {
