@@ -149,6 +149,12 @@
       color: var(--primary);
     }
 
+    .health-box {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--border);
+    }
+
     .updated {
       margin-top: 6px;
       color: var(--muted);
@@ -300,7 +306,7 @@
   <script>
     const MQTT_URL = "wss://broker.emqx.io:8084/mqtt";
     const ACTION_LOCK_MS = 1000;
-    const LOCAL_BACKUP_KEY = "esp_switch_local_backup_v3";
+    const LOCAL_BACKUP_KEY = "esp_switch_local_backup_v4";
 
     const TIMEZONE_OPTIONS = {
       "8": "UTC+8（台灣 / 香港）",
@@ -359,7 +365,11 @@
         status: t(base, "status"),
         heartbeat: t(base, "heartbeat"),
         event: t(base, "event"),
-        eventTime: t(base, "event_time")
+        eventTime: t(base, "event_time"),
+        healthUptime: t(base, "health/uptime"),
+        healthFreeHeap: t(base, "health/free_heap"),
+        healthRssi: t(base, "health/rssi"),
+        healthResetReason: t(base, "health/reset_reason")
       };
     }
 
@@ -389,6 +399,37 @@
       return TIMEZONE_OPTIONS[String(value)] || `UTC+${value}`;
     }
 
+    function formatUptime(secondsText) {
+      const sec = Number(secondsText);
+      if (!Number.isFinite(sec) || sec < 0) return secondsText || "尚未收到";
+
+      const days = Math.floor(sec / 86400);
+      const hours = Math.floor((sec % 86400) / 3600);
+      const minutes = Math.floor((sec % 3600) / 60);
+
+      if (days > 0) return `${days}天 ${hours}小時 ${minutes}分`;
+      if (hours > 0) return `${hours}小時 ${minutes}分`;
+      return `${minutes}分`;
+    }
+
+    function formatHeap(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return value || "尚未收到";
+      return `${n} bytes`;
+    }
+
+    function formatRssi(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return value || "尚未收到";
+
+      let level = "正常";
+      if (n <= -80) level = "偏弱";
+      else if (n <= -70) level = "普通";
+      else if (n >= -55) level = "良好";
+
+      return `${n} dBm（${level}）`;
+    }
+
     function buildTimezoneSelect(id, selected) {
       return `
         <select id="${id}">
@@ -409,6 +450,10 @@
         heartbeat: "尚未收到",
         lastEvent: "尚未收到",
         lastEventTime: "尚未收到",
+        uptime: "尚未收到",
+        freeHeap: "尚未收到",
+        rssi: "尚未收到",
+        resetReason: "尚未收到",
         status: "offline",
         topics: getTopics(device.base),
         pendingSave: null,
@@ -429,13 +474,7 @@
           </div>
         </div>
 
-        <div id="${device.id}_summary" class="summary">
-          <div><strong>排程摘要：</strong>自動：啟用｜開 19:00｜關 23:30｜時區 UTC+9（日本）</div>
-          <div><strong>最後 heartbeat：</strong><span id="${device.id}_heartbeat">尚未收到</span></div>
-          <div><strong>最後事件：</strong><span id="${device.id}_event" class="event-text">尚未收到</span></div>
-          <div><strong>最後事件時間：</strong><span id="${device.id}_event_time">尚未收到</span></div>
-          <div id="${device.id}_updated" class="updated">最後更新：尚未更新</div>
-        </div>
+        <div id="${device.id}_summary" class="summary"></div>
 
         <div class="btn-row">
           <button class="btn-on" id="${device.id}_on">手動開啟</button>
@@ -506,10 +545,18 @@
 
       document.getElementById(`${device.id}_summary`).innerHTML = `
         <div><strong>排程摘要：</strong>自動：${s.autoEnabled ? "啟用" : "停用"}｜開 ${s.onTime}｜關 ${s.offTime}｜時區 ${timezoneLabel(s.timezone)}</div>
-        <div><strong>最後 heartbeat：</strong><span id="${device.id}_heartbeat">${s.heartbeat}</span></div>
-        <div><strong>最後事件：</strong><span id="${device.id}_event" class="event-text">${translateEvent(s.lastEvent)}</span></div>
-        <div><strong>最後事件時間：</strong><span id="${device.id}_event_time">${s.lastEventTime}</span></div>
-        <div id="${device.id}_updated" class="updated">最後更新：${s.lastUpdated}</div>
+        <div><strong>最後 heartbeat：</strong>${s.heartbeat}</div>
+        <div><strong>最後事件：</strong><span class="event-text">${translateEvent(s.lastEvent)}</span></div>
+        <div><strong>最後事件時間：</strong>${s.lastEventTime}</div>
+
+        <div class="health-box">
+          <div><strong>運行時間：</strong>${formatUptime(s.uptime)}</div>
+          <div><strong>剩餘記憶體：</strong>${formatHeap(s.freeHeap)}</div>
+          <div><strong>Wi-Fi 訊號：</strong>${formatRssi(s.rssi)}</div>
+          <div><strong>重開機原因：</strong>${s.resetReason}</div>
+        </div>
+
+        <div class="updated">最後更新：${s.lastUpdated}</div>
       `;
     }
 
@@ -562,7 +609,11 @@
         tp.status,
         tp.heartbeat,
         tp.event,
-        tp.eventTime
+        tp.eventTime,
+        tp.healthUptime,
+        tp.healthFreeHeap,
+        tp.healthRssi,
+        tp.healthResetReason
       ].forEach(topic => client.subscribe(topic));
     }
 
@@ -594,7 +645,7 @@
 
     function createBackupObject() {
       return {
-        version: 3,
+        version: 4,
         exportedAt: new Date().toISOString(),
         devices: DEVICES.map(d => ({
           id: d.id,
@@ -869,6 +920,34 @@
 
         if (topic === tp.eventTime) {
           s.lastEventTime = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.healthUptime) {
+          s.uptime = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.healthFreeHeap) {
+          s.freeHeap = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.healthRssi) {
+          s.rssi = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.healthResetReason) {
+          s.resetReason = payload;
           touchUpdated(d);
           renderState(d);
           return;
