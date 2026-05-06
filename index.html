@@ -149,10 +149,16 @@
       color: var(--primary);
     }
 
-    .health-box {
+    .section-box {
       margin-top: 8px;
       padding-top: 8px;
       border-top: 1px dashed var(--border);
+    }
+
+    .section-title {
+      font-weight: 800;
+      color: var(--secondary);
+      margin-bottom: 4px;
     }
 
     .updated {
@@ -253,6 +259,16 @@
       color: var(--info);
     }
 
+    .warn-text {
+      color: var(--warning);
+      font-weight: 700;
+    }
+
+    .danger-text {
+      color: var(--danger);
+      font-weight: 700;
+    }
+
     @media (max-width: 560px) {
       .title-row {
         flex-direction: column;
@@ -306,7 +322,7 @@
   <script>
     const MQTT_URL = "wss://broker.emqx.io:8084/mqtt";
     const ACTION_LOCK_MS = 1000;
-    const LOCAL_BACKUP_KEY = "esp_switch_local_backup_v4";
+    const LOCAL_BACKUP_KEY = "esp_switch_local_backup_v5";
 
     const TIMEZONE_OPTIONS = {
       "8": "UTC+8（台灣 / 香港）",
@@ -366,10 +382,22 @@
         heartbeat: t(base, "heartbeat"),
         event: t(base, "event"),
         eventTime: t(base, "event_time"),
+
         healthUptime: t(base, "health/uptime"),
         healthFreeHeap: t(base, "health/free_heap"),
         healthRssi: t(base, "health/rssi"),
-        healthResetReason: t(base, "health/reset_reason")
+        healthResetReason: t(base, "health/reset_reason"),
+
+        diagBootCount: t(base, "diag/boot_count"),
+        diagLastResetReason: t(base, "diag/last_reset_reason"),
+        diagLastRestartReason: t(base, "diag/last_restart_reason"),
+        diagWifiFailCount: t(base, "diag/wifi_fail_count"),
+        diagMqttFailCount: t(base, "diag/mqtt_fail_count"),
+        diagWifiOfflineSeconds: t(base, "diag/wifi_offline_seconds"),
+        diagMqttOfflineSeconds: t(base, "diag/mqtt_offline_seconds"),
+        diagLastWifiStatus: t(base, "diag/last_wifi_status"),
+        diagLastMqttState: t(base, "diag/last_mqtt_state"),
+        diagLastDiagTime: t(base, "diag/last_diag_time")
       };
     }
 
@@ -389,10 +417,25 @@
         schedule_off: "排程觸發關閉",
         schedule_on_same_state: "排程到開啟時間，但原本已經是開啟",
         schedule_off_same_state: "排程到關閉時間，但原本已經是關閉",
-        timezone_updated: "已更新時區"
+        timezone_updated: "已更新時區",
+        wifi_offline_timeout_restart: "Wi-Fi 離線逾時，自動重開",
+        mqtt_offline_timeout_restart: "MQTT 離線逾時，自動重開",
+        daily_restart: "每日自動重開"
       };
 
       return map[eventName] || eventName || "尚未收到";
+    }
+
+    function translateRestartReason(value) {
+      const map = {
+        wifi_offline_timeout: "Wi-Fi 離線逾時",
+        mqtt_offline_timeout: "MQTT 離線逾時",
+        daily_restart: "每日自動重開",
+        manual_power_cycle_or_unknown: "手動斷電 / 外部重啟 / 未知",
+        unknown: "未知"
+      };
+
+      return map[value] || value || "尚未收到";
     }
 
     function timezoneLabel(value) {
@@ -410,6 +453,17 @@
       if (days > 0) return `${days}天 ${hours}小時 ${minutes}分`;
       if (hours > 0) return `${hours}小時 ${minutes}分`;
       return `${minutes}分`;
+    }
+
+    function formatSeconds(value) {
+      const sec = Number(value);
+      if (!Number.isFinite(sec) || sec < 0) return value || "尚未收到";
+
+      const min = Math.floor(sec / 60);
+      const rem = sec % 60;
+
+      if (min > 0) return `${min}分 ${rem}秒`;
+      return `${rem}秒`;
     }
 
     function formatHeap(value) {
@@ -430,6 +484,25 @@
       return `${n} dBm（${level}）`;
     }
 
+    function formatWifiStatus(value) {
+      if (!value || value === "尚未收到") return "尚未收到";
+      if (String(value).startsWith("3 ")) return `${value}（已連線）`;
+      return `<span class="warn-text">${value}</span>`;
+    }
+
+    function formatMqttState(value) {
+      if (!value || value === "尚未收到") return "尚未收到";
+      if (String(value).startsWith("0 ")) return `${value}（已連線）`;
+      return `<span class="warn-text">${value}</span>`;
+    }
+
+    function formatFailCount(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return value || "尚未收到";
+      if (n > 0) return `<span class="warn-text">${n}</span>`;
+      return String(n);
+    }
+
     function buildTimezoneSelect(id, selected) {
       return `
         <select id="${id}">
@@ -446,14 +519,28 @@
         onTime: "19:00",
         offTime: "23:30",
         timezone: "9",
+
         lastUpdated: "尚未更新",
         heartbeat: "尚未收到",
         lastEvent: "尚未收到",
         lastEventTime: "尚未收到",
+
         uptime: "尚未收到",
         freeHeap: "尚未收到",
         rssi: "尚未收到",
         resetReason: "尚未收到",
+
+        diagBootCount: "尚未收到",
+        diagLastResetReason: "尚未收到",
+        diagLastRestartReason: "尚未收到",
+        diagWifiFailCount: "尚未收到",
+        diagMqttFailCount: "尚未收到",
+        diagWifiOfflineSeconds: "尚未收到",
+        diagMqttOfflineSeconds: "尚未收到",
+        diagLastWifiStatus: "尚未收到",
+        diagLastMqttState: "尚未收到",
+        diagLastDiagTime: "尚未收到",
+
         status: "offline",
         topics: getTopics(device.base),
         pendingSave: null,
@@ -549,11 +636,26 @@
         <div><strong>最後事件：</strong><span class="event-text">${translateEvent(s.lastEvent)}</span></div>
         <div><strong>最後事件時間：</strong>${s.lastEventTime}</div>
 
-        <div class="health-box">
+        <div class="section-box">
+          <div class="section-title">健康狀態</div>
           <div><strong>運行時間：</strong>${formatUptime(s.uptime)}</div>
           <div><strong>剩餘記憶體：</strong>${formatHeap(s.freeHeap)}</div>
           <div><strong>Wi-Fi 訊號：</strong>${formatRssi(s.rssi)}</div>
-          <div><strong>重開機原因：</strong>${s.resetReason}</div>
+          <div><strong>ESP 重啟原因：</strong>${s.resetReason}</div>
+        </div>
+
+        <div class="section-box">
+          <div class="section-title">診斷資訊</div>
+          <div><strong>開機次數：</strong>${s.diagBootCount}</div>
+          <div><strong>ESP 重啟原因：</strong>${s.diagLastResetReason}</div>
+          <div><strong>上次重開原因：</strong>${translateRestartReason(s.diagLastRestartReason)}</div>
+          <div><strong>Wi-Fi 狀態：</strong>${formatWifiStatus(s.diagLastWifiStatus)}</div>
+          <div><strong>MQTT 狀態：</strong>${formatMqttState(s.diagLastMqttState)}</div>
+          <div><strong>Wi-Fi 失敗次數：</strong>${formatFailCount(s.diagWifiFailCount)}</div>
+          <div><strong>MQTT 失敗次數：</strong>${formatFailCount(s.diagMqttFailCount)}</div>
+          <div><strong>Wi-Fi 離線時間：</strong>${formatSeconds(s.diagWifiOfflineSeconds)}</div>
+          <div><strong>MQTT 離線時間：</strong>${formatSeconds(s.diagMqttOfflineSeconds)}</div>
+          <div><strong>最後診斷時間：</strong>${s.diagLastDiagTime}</div>
         </div>
 
         <div class="updated">最後更新：${s.lastUpdated}</div>
@@ -610,10 +712,22 @@
         tp.heartbeat,
         tp.event,
         tp.eventTime,
+
         tp.healthUptime,
         tp.healthFreeHeap,
         tp.healthRssi,
-        tp.healthResetReason
+        tp.healthResetReason,
+
+        tp.diagBootCount,
+        tp.diagLastResetReason,
+        tp.diagLastRestartReason,
+        tp.diagWifiFailCount,
+        tp.diagMqttFailCount,
+        tp.diagWifiOfflineSeconds,
+        tp.diagMqttOfflineSeconds,
+        tp.diagLastWifiStatus,
+        tp.diagLastMqttState,
+        tp.diagLastDiagTime
       ].forEach(topic => client.subscribe(topic));
     }
 
@@ -645,7 +759,7 @@
 
     function createBackupObject() {
       return {
-        version: 4,
+        version: 5,
         exportedAt: new Date().toISOString(),
         devices: DEVICES.map(d => ({
           id: d.id,
@@ -948,6 +1062,76 @@
 
         if (topic === tp.healthResetReason) {
           s.resetReason = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagBootCount) {
+          s.diagBootCount = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagLastResetReason) {
+          s.diagLastResetReason = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagLastRestartReason) {
+          s.diagLastRestartReason = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagWifiFailCount) {
+          s.diagWifiFailCount = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagMqttFailCount) {
+          s.diagMqttFailCount = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagWifiOfflineSeconds) {
+          s.diagWifiOfflineSeconds = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagMqttOfflineSeconds) {
+          s.diagMqttOfflineSeconds = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagLastWifiStatus) {
+          s.diagLastWifiStatus = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagLastMqttState) {
+          s.diagLastMqttState = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagLastDiagTime) {
+          s.diagLastDiagTime = payload;
           touchUpdated(d);
           renderState(d);
           return;
