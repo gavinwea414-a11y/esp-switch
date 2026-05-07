@@ -1,285 +1,1273 @@
-diff --git a/index.html b/index.html
-index 008b70e3f6f050995a2e45a485d4dccba5249a50..9923f95e0cf2dc80670505b9ae40e43bee6d6fb3 100644
---- a/index.html
-+++ b/index.html
-@@ -373,50 +373,52 @@
-         autoSet: t(base, "auto/enabled/set"),
-         autoState: t(base, "auto/enabled/state"),
-         onSet: t(base, "schedule/on/set"),
-         onState: t(base, "schedule/on/state"),
-         offSet: t(base, "schedule/off/set"),
-         offState: t(base, "schedule/off/state"),
-         timezoneSet: t(base, "timezone/set"),
-         timezoneState: t(base, "timezone/state"),
-         status: t(base, "status"),
-         heartbeat: t(base, "heartbeat"),
-         event: t(base, "event"),
-         eventTime: t(base, "event_time"),
- 
-         healthUptime: t(base, "health/uptime"),
-         healthFreeHeap: t(base, "health/free_heap"),
-         healthRssi: t(base, "health/rssi"),
-         healthResetReason: t(base, "health/reset_reason"),
- 
-         diagBootCount: t(base, "diag/boot_count"),
-         diagLastResetReason: t(base, "diag/last_reset_reason"),
-         diagLastRestartReason: t(base, "diag/last_restart_reason"),
-         diagWifiFailCount: t(base, "diag/wifi_fail_count"),
-         diagMqttFailCount: t(base, "diag/mqtt_fail_count"),
-         diagWifiOfflineSeconds: t(base, "diag/wifi_offline_seconds"),
-         diagMqttOfflineSeconds: t(base, "diag/mqtt_offline_seconds"),
-+        diagLastWifiOfflineDuration: t(base, "diag/last_wifi_offline_duration"),
-+        diagLastMqttOfflineDuration: t(base, "diag/last_mqtt_offline_duration"),
-         diagLastWifiStatus: t(base, "diag/last_wifi_status"),
-         diagLastMqttState: t(base, "diag/last_mqtt_state"),
-         diagLastDiagTime: t(base, "diag/last_diag_time")
-       };
-     }
- 
-     function translateEvent(eventName) {
-       const map = {
-         boot: "設備開機",
-         manual_on: "手動開啟",
-         manual_off: "手動關閉",
-         manual_command_ignored: "手動命令過快，被忽略",
-         manual_on_same_state: "手動開啟，但原本已經是開啟",
-         manual_off_same_state: "手動關閉，但原本已經是關閉",
-         auto_enabled: "已啟用自動排程",
-         auto_disabled: "已停用自動排程",
-         schedule_on_updated: "已更新開啟排程時間",
-         schedule_off_updated: "已更新關閉排程時間",
-         schedule_on: "排程觸發開啟",
-         schedule_off: "排程觸發關閉",
-         schedule_on_same_state: "排程到開啟時間，但原本已經是開啟",
-         schedule_off_same_state: "排程到關閉時間，但原本已經是關閉",
-         timezone_updated: "已更新時區",
-         wifi_offline_timeout_restart: "Wi-Fi 離線逾時，自動重開",
-         mqtt_offline_timeout_restart: "MQTT 離線逾時，自動重開",
-@@ -515,50 +517,52 @@
-     function buildCard(device, mountId) {
-       state[device.id] = {
-         relay: "OFF",
-         autoEnabled: true,
-         onTime: "19:00",
-         offTime: "23:30",
-         timezone: "9",
- 
-         lastUpdated: "尚未更新",
-         heartbeat: "尚未收到",
-         lastEvent: "尚未收到",
-         lastEventTime: "尚未收到",
- 
-         uptime: "尚未收到",
-         freeHeap: "尚未收到",
-         rssi: "尚未收到",
-         resetReason: "尚未收到",
- 
-         diagBootCount: "尚未收到",
-         diagLastResetReason: "尚未收到",
-         diagLastRestartReason: "尚未收到",
-         diagWifiFailCount: "尚未收到",
-         diagMqttFailCount: "尚未收到",
-         diagWifiOfflineSeconds: "尚未收到",
-         diagMqttOfflineSeconds: "尚未收到",
-+        diagLastWifiOfflineDuration: "尚未收到",
-+        diagLastMqttOfflineDuration: "尚未收到",
-         diagLastWifiStatus: "尚未收到",
-         diagLastMqttState: "尚未收到",
-         diagLastDiagTime: "尚未收到",
- 
-         status: "offline",
-         topics: getTopics(device.base),
-         pendingSave: null,
-         actionLockedUntil: 0
-       };
- 
-       const mount = document.getElementById(mountId);
-       mount.innerHTML = `
-         <div class="title-row">
-           <div class="title-left">
-             <strong>${device.name}</strong>
-             <div class="device-meta">Topic Base：${device.base}</div>
-           </div>
-           <div class="badge-wrap">
-             <span id="${device.id}_online" class="online-state offline">設備離線</span>
-             <span id="${device.id}_busy" class="busy-state idle">可操作</span>
-             <span id="${device.id}_state" class="state off">關閉</span>
-           </div>
-         </div>
- 
-         <div id="${device.id}_summary" class="summary"></div>
-@@ -631,52 +635,54 @@
-       const s = state[device.id];
- 
-       document.getElementById(`${device.id}_summary`).innerHTML = `
-         <div><strong>排程摘要：</strong>自動：${s.autoEnabled ? "啟用" : "停用"}｜開 ${s.onTime}｜關 ${s.offTime}｜時區 ${timezoneLabel(s.timezone)}</div>
-         <div><strong>最後 heartbeat：</strong>${s.heartbeat}</div>
-         <div><strong>最後事件：</strong><span class="event-text">${translateEvent(s.lastEvent)}</span></div>
-         <div><strong>最後事件時間：</strong>${s.lastEventTime}</div>
- 
-         <div class="section-box">
-           <div class="section-title">健康狀態</div>
-           <div><strong>運行時間：</strong>${formatUptime(s.uptime)}</div>
-           <div><strong>剩餘記憶體：</strong>${formatHeap(s.freeHeap)}</div>
-           <div><strong>Wi-Fi 訊號：</strong>${formatRssi(s.rssi)}</div>
-           <div><strong>ESP 重啟原因：</strong>${s.resetReason}</div>
-         </div>
- 
-         <div class="section-box">
-           <div class="section-title">診斷資訊</div>
-           <div><strong>開機次數：</strong>${s.diagBootCount}</div>
-           <div><strong>ESP 重啟原因：</strong>${s.diagLastResetReason}</div>
-           <div><strong>上次重開原因：</strong>${translateRestartReason(s.diagLastRestartReason)}</div>
-           <div><strong>Wi-Fi 狀態：</strong>${formatWifiStatus(s.diagLastWifiStatus)}</div>
-           <div><strong>MQTT 狀態：</strong>${formatMqttState(s.diagLastMqttState)}</div>
-           <div><strong>Wi-Fi 失敗次數：</strong>${formatFailCount(s.diagWifiFailCount)}</div>
-           <div><strong>MQTT 失敗次數：</strong>${formatFailCount(s.diagMqttFailCount)}</div>
--          <div><strong>Wi-Fi 離線時間：</strong>${formatSeconds(s.diagWifiOfflineSeconds)}</div>
--          <div><strong>MQTT 離線時間：</strong>${formatSeconds(s.diagMqttOfflineSeconds)}</div>
-+          <div><strong>Wi-Fi 目前離線時間：</strong>${formatSeconds(s.diagWifiOfflineSeconds)}</div>
-+          <div><strong>MQTT 目前離線時間：</strong>${formatSeconds(s.diagMqttOfflineSeconds)}</div>
-+          <div><strong>Wi-Fi 上次離線持續時間：</strong>${formatSeconds(s.diagLastWifiOfflineDuration)}</div>
-+          <div><strong>MQTT 上次離線持續時間：</strong>${formatSeconds(s.diagLastMqttOfflineDuration)}</div>
-           <div><strong>最後診斷時間：</strong>${s.diagLastDiagTime}</div>
-         </div>
- 
-         <div class="updated">最後更新：${s.lastUpdated}</div>
-       `;
-     }
- 
-     function renderState(device) {
-       const s = state[device.id];
-       const tag = document.getElementById(`${device.id}_state`);
-       const isOn = s.relay === "ON";
- 
-       tag.textContent = isOn ? "開啟" : "關閉";
-       tag.className = `state ${isOn ? "on" : "off"}`;
- 
-       document.getElementById(`${device.id}_auto`).checked = !!s.autoEnabled;
-       document.getElementById(`${device.id}_on_time`).value = s.onTime || "19:00";
-       document.getElementById(`${device.id}_off_time`).value = s.offTime || "23:30";
-       document.getElementById(`${device.id}_timezone`).value = String(s.timezone || "9");
- 
-       renderSummary(device);
-       renderDeviceOnline(device);
-       renderBusy(device);
-     }
- 
-@@ -703,50 +709,52 @@
-     function subscribeDeviceTopics(device) {
-       const tp = state[device.id].topics;
-       [
-         tp.state,
-         tp.autoState,
-         tp.onState,
-         tp.offState,
-         tp.timezoneState,
-         tp.status,
-         tp.heartbeat,
-         tp.event,
-         tp.eventTime,
- 
-         tp.healthUptime,
-         tp.healthFreeHeap,
-         tp.healthRssi,
-         tp.healthResetReason,
- 
-         tp.diagBootCount,
-         tp.diagLastResetReason,
-         tp.diagLastRestartReason,
-         tp.diagWifiFailCount,
-         tp.diagMqttFailCount,
-         tp.diagWifiOfflineSeconds,
-         tp.diagMqttOfflineSeconds,
-+        tp.diagLastWifiOfflineDuration,
-+        tp.diagLastMqttOfflineDuration,
-         tp.diagLastWifiStatus,
-         tp.diagLastMqttState,
-         tp.diagLastDiagTime
-       ].forEach(topic => client.subscribe(topic));
-     }
- 
-     function sameTime(a, b) {
-       return a === b;
-     }
- 
-     function checkPendingSave(device) {
-       const s = state[device.id];
-       if (!s.pendingSave) return;
- 
-       const p = s.pendingSave;
-       const autoMatched = s.autoEnabled === p.autoEnabled;
-       const onMatched = s.onTime === p.onTime;
-       const offMatched = s.offTime === p.offTime;
-       const tzMatched = String(s.timezone) === String(p.timezone);
- 
-       if (autoMatched && onMatched && offMatched && tzMatched) {
-         log(`${device.name} → 設定已確認儲存`);
-         s.pendingSave = null;
-         saveLocalBackup();
-       }
-@@ -1094,50 +1102,64 @@
-           renderState(d);
-           return;
-         }
- 
-         if (topic === tp.diagMqttFailCount) {
-           s.diagMqttFailCount = payload;
-           touchUpdated(d);
-           renderState(d);
-           return;
-         }
- 
-         if (topic === tp.diagWifiOfflineSeconds) {
-           s.diagWifiOfflineSeconds = payload;
-           touchUpdated(d);
-           renderState(d);
-           return;
-         }
- 
-         if (topic === tp.diagMqttOfflineSeconds) {
-           s.diagMqttOfflineSeconds = payload;
-           touchUpdated(d);
-           renderState(d);
-           return;
-         }
- 
-+        if (topic === tp.diagLastWifiOfflineDuration) {
-+          s.diagLastWifiOfflineDuration = payload;
-+          touchUpdated(d);
-+          renderState(d);
-+          return;
-+        }
-+
-+        if (topic === tp.diagLastMqttOfflineDuration) {
-+          s.diagLastMqttOfflineDuration = payload;
-+          touchUpdated(d);
-+          renderState(d);
-+          return;
-+        }
-+
-         if (topic === tp.diagLastWifiStatus) {
-           s.diagLastWifiStatus = payload;
-           touchUpdated(d);
-           renderState(d);
-           return;
-         }
- 
-         if (topic === tp.diagLastMqttState) {
-           s.diagLastMqttState = payload;
-           touchUpdated(d);
-           renderState(d);
-           return;
-         }
- 
-         if (topic === tp.diagLastDiagTime) {
-           s.diagLastDiagTime = payload;
-           touchUpdated(d);
-           renderState(d);
-           return;
-         }
-       });
-     });
- 
-     DEVICES.forEach(d => {
-       const s = state[d.id];
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>ESP-01S 雙設備 MQTT 遠端開關</title>
+
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#2563eb">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="ESP開關">
+
+  <style>
+    :root {
+      --bg: #f4f6fb;
+      --card: #ffffff;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --primary: #2563eb;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --warning: #d97706;
+      --border: #e5e7eb;
+      --shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+      --disabled: #9ca3af;
+      --secondary: #475569;
+      --info: #0f766e;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 16px;
+      font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .container {
+      max-width: 920px;
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      padding: 14px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 1.35rem;
+    }
+
+    h2 {
+      margin: 0 0 10px;
+      font-size: 1.02rem;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      background: var(--danger);
+      box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.15);
+    }
+
+    .dot.online {
+      background: var(--success);
+      box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.16);
+    }
+
+    .title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 10px;
+      gap: 10px;
+    }
+
+    .title-left {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .device-meta {
+      font-size: 0.82rem;
+      color: var(--muted);
+      word-break: break-all;
+    }
+
+    .badge-wrap {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .state,
+    .online-state,
+    .busy-state {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #fff;
+      background: var(--muted);
+      white-space: nowrap;
+    }
+
+    .state.on { background: var(--success); }
+    .state.off { background: var(--danger); }
+
+    .online-state.online { background: var(--success); }
+    .online-state.offline { background: var(--warning); }
+
+    .busy-state.busy { background: var(--info); }
+    .busy-state.idle { background: var(--secondary); }
+
+    .summary {
+      margin: 8px 0 8px;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 0.93rem;
+      line-height: 1.75;
+    }
+
+    .summary strong {
+      color: var(--primary);
+    }
+
+    .section-box {
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px dashed var(--border);
+    }
+
+    .section-title {
+      font-weight: 800;
+      color: var(--secondary);
+      margin-bottom: 4px;
+    }
+
+    .updated {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 0.88rem;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin: 10px 0;
+    }
+
+    button {
+      border: none;
+      border-radius: 12px;
+      padding: 11px 14px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      cursor: pointer;
+      flex: 1;
+      transition: opacity 0.2s ease;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.6;
+      background: var(--disabled) !important;
+      color: #fff !important;
+    }
+
+    .btn-on { background: #16a34a; color: #fff; }
+    .btn-off { background: #ef4444; color: #fff; }
+    .btn-save { background: var(--primary); color: #fff; width: 100%; margin-top: 10px; }
+    .btn-sync { background: var(--secondary); color: #fff; }
+    .btn-export { background: #0f766e; color: #fff; }
+    .btn-import { background: #7c3aed; color: #fff; }
+    .btn-clear { background: #b45309; color: #fff; }
+
+    .line {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 10px 0;
+      font-size: 0.95rem;
+    }
+
+    input[type="time"], select {
+      width: 150px;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 1rem;
+      background: #fff;
+    }
+
+    input[type="time"]:disabled,
+    input[type="checkbox"]:disabled,
+    select:disabled {
+      opacity: 0.6;
+    }
+
+    input[type="checkbox"] {
+      transform: scale(1.2);
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 170px;
+      resize: vertical;
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      font-size: 0.94rem;
+      font-family: Consolas, Monaco, monospace;
+      background: #fff;
+      color: var(--text);
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.6;
+      margin-top: 6px;
+    }
+
+    .msg {
+      font-size: 0.92rem;
+      color: var(--muted);
+      min-height: 1.4em;
+      white-space: pre-wrap;
+    }
+
+    .event-text {
+      font-weight: 700;
+      color: var(--info);
+    }
+
+    .warn-text {
+      color: var(--warning);
+      font-weight: 700;
+    }
+
+    .danger-text {
+      color: var(--danger);
+      font-weight: 700;
+    }
+
+    @media (max-width: 560px) {
+      .title-row {
+        flex-direction: column;
+      }
+
+      .badge-wrap {
+        justify-content: flex-start;
+      }
+
+      .btn-row {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>ESP-01S 雙設備 MQTT 遠端開關</h1>
+      <div class="status-bar">
+        <span id="dot" class="dot"></span>
+        <span>MQTT 連線狀態：<span id="connText">離線</span></span>
+      </div>
+    </div>
+
+    <div id="card1" class="card"></div>
+    <div id="card2" class="card"></div>
+
+    <div class="card">
+      <h2>設定備份 / 還原</h2>
+      <div class="btn-row">
+        <button class="btn-export" id="exportBtn">匯出目前設定</button>
+        <button class="btn-import" id="importBtn">套用備份設定</button>
+        <button class="btn-clear" id="clearLocalBtn">清除本機自動保存</button>
+      </div>
+      <textarea id="backupText" placeholder="按『匯出目前設定』後，這裡會出現備份 JSON；也可以把舊備份貼到這裡再按『套用備份設定』。"></textarea>
+      <div class="hint">
+        備份內容包含：是否啟用自動排程、開啟時間、關閉時間、時區。<br>
+        還原時會透過 MQTT 寫回設備，所以設備必須在線、且 MQTT 必須已連線。<br>
+        此頁也會自動把最近一次設定保存到本機瀏覽器。
+      </div>
+    </div>
+
+    <div class="card">
+      <strong>訊息提示</strong>
+      <div id="msg" class="msg">等待連線…</div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <script>
+    const MQTT_URL = "wss://broker.emqx.io:8084/mqtt";
+    const ACTION_LOCK_MS = 1000;
+    const LOCAL_BACKUP_KEY = "esp_switch_local_backup_v6";
+
+    const TIMEZONE_OPTIONS = {
+      "8": "UTC+8（台灣 / 香港）",
+      "9": "UTC+9（日本）"
+    };
+
+    const DEVICES = [
+      { id: "switch01", name: "開關 1", base: "gavinwea414-a11y/esp-switch01/relay1" },
+      { id: "switch02", name: "開關 2", base: "gavinwea414-a11y/esp-switch02/relay1" }
+    ];
+
+    const state = {};
+    let isConnected = false;
+
+    const msgEl = document.getElementById("msg");
+    const dotEl = document.getElementById("dot");
+    const connTextEl = document.getElementById("connText");
+    const backupTextEl = document.getElementById("backupText");
+    const exportBtnEl = document.getElementById("exportBtn");
+    const importBtnEl = document.getElementById("importBtn");
+    const clearLocalBtnEl = document.getElementById("clearLocalBtn");
+
+    function log(msg) {
+      const ts = new Date().toLocaleTimeString("zh-TW", { hour12: false });
+      msgEl.textContent = `[${ts}] ${msg}\n` + msgEl.textContent.slice(0, 3000);
+    }
+
+    function formatNow() {
+      return new Date().toLocaleString("zh-TW", {
+        hour12: false,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+      });
+    }
+
+    function t(base, suffix) {
+      return `${base}/${suffix}`;
+    }
+
+    function getTopics(base) {
+      return {
+        set: t(base, "set"),
+        state: t(base, "state"),
+        autoSet: t(base, "auto/enabled/set"),
+        autoState: t(base, "auto/enabled/state"),
+        onSet: t(base, "schedule/on/set"),
+        onState: t(base, "schedule/on/state"),
+        offSet: t(base, "schedule/off/set"),
+        offState: t(base, "schedule/off/state"),
+        timezoneSet: t(base, "timezone/set"),
+        timezoneState: t(base, "timezone/state"),
+        status: t(base, "status"),
+        heartbeat: t(base, "heartbeat"),
+        event: t(base, "event"),
+        eventTime: t(base, "event_time"),
+
+        healthUptime: t(base, "health/uptime"),
+        healthFreeHeap: t(base, "health/free_heap"),
+        healthRssi: t(base, "health/rssi"),
+        healthResetReason: t(base, "health/reset_reason"),
+
+        diagBootCount: t(base, "diag/boot_count"),
+        diagLastResetReason: t(base, "diag/last_reset_reason"),
+        diagLastRestartReason: t(base, "diag/last_restart_reason"),
+        diagWifiFailCount: t(base, "diag/wifi_fail_count"),
+        diagMqttFailCount: t(base, "diag/mqtt_fail_count"),
+        diagWifiOfflineSeconds: t(base, "diag/wifi_offline_seconds"),
+        diagMqttOfflineSeconds: t(base, "diag/mqtt_offline_seconds"),
+        diagLastWifiOfflineDuration: t(base, "diag/last_wifi_offline_duration"),
+        diagLastMqttOfflineDuration: t(base, "diag/last_mqtt_offline_duration"),
+        diagLastWifiStatus: t(base, "diag/last_wifi_status"),
+        diagLastMqttState: t(base, "diag/last_mqtt_state"),
+        diagLastDiagTime: t(base, "diag/last_diag_time")
+      };
+    }
+
+    function translateEvent(eventName) {
+      const map = {
+        boot: "設備開機",
+        manual_on: "手動開啟",
+        manual_off: "手動關閉",
+        manual_command_ignored: "手動命令過快，被忽略",
+        manual_on_same_state: "手動開啟，但原本已經是開啟",
+        manual_off_same_state: "手動關閉，但原本已經是關閉",
+        auto_enabled: "已啟用自動排程",
+        auto_disabled: "已停用自動排程",
+        schedule_on_updated: "已更新開啟排程時間",
+        schedule_off_updated: "已更新關閉排程時間",
+        schedule_on: "排程觸發開啟",
+        schedule_off: "排程觸發關閉",
+        schedule_on_same_state: "排程到開啟時間，但原本已經是開啟",
+        schedule_off_same_state: "排程到關閉時間，但原本已經是關閉",
+        timezone_updated: "已更新時區",
+        wifi_offline_timeout_restart: "Wi-Fi 離線逾時，自動重開",
+        mqtt_offline_timeout_restart: "MQTT 離線逾時，自動重開",
+        daily_restart: "每日自動重開"
+      };
+
+      return map[eventName] || eventName || "尚未收到";
+    }
+
+    function translateRestartReason(value) {
+      const map = {
+        wifi_offline_timeout: "Wi-Fi 離線逾時",
+        mqtt_offline_timeout: "MQTT 離線逾時",
+        daily_restart: "每日自動重開",
+        manual_power_cycle_or_unknown: "手動斷電 / 外部重啟 / 未知",
+        unknown: "未知"
+      };
+
+      return map[value] || value || "尚未收到";
+    }
+
+    function timezoneLabel(value) {
+      return TIMEZONE_OPTIONS[String(value)] || `UTC+${value}`;
+    }
+
+    function formatUptime(secondsText) {
+      const sec = Number(secondsText);
+      if (!Number.isFinite(sec) || sec < 0) return secondsText || "尚未收到";
+
+      const days = Math.floor(sec / 86400);
+      const hours = Math.floor((sec % 86400) / 3600);
+      const minutes = Math.floor((sec % 3600) / 60);
+
+      if (days > 0) return `${days}天 ${hours}小時 ${minutes}分`;
+      if (hours > 0) return `${hours}小時 ${minutes}分`;
+      return `${minutes}分`;
+    }
+
+    function formatSeconds(value) {
+      const sec = Number(value);
+      if (!Number.isFinite(sec) || sec < 0) return value || "尚未收到";
+
+      const hours = Math.floor(sec / 3600);
+      const min = Math.floor((sec % 3600) / 60);
+      const rem = sec % 60;
+
+      if (hours > 0) return `${hours}小時 ${min}分 ${rem}秒`;
+      if (min > 0) return `${min}分 ${rem}秒`;
+      return `${rem}秒`;
+    }
+
+    function formatHeap(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return value || "尚未收到";
+      return `${n} bytes`;
+    }
+
+    function formatRssi(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return value || "尚未收到";
+
+      let level = "正常";
+      if (n <= -80) level = "偏弱";
+      else if (n <= -70) level = "普通";
+      else if (n >= -55) level = "良好";
+
+      return `${n} dBm（${level}）`;
+    }
+
+    function formatWifiStatus(value) {
+      if (!value || value === "尚未收到") return "尚未收到";
+      if (String(value).startsWith("3 ")) return `${value}（已連線）`;
+      return `<span class="warn-text">${value}</span>`;
+    }
+
+    function formatMqttState(value) {
+      if (!value || value === "尚未收到") return "尚未收到";
+      if (String(value).startsWith("0 ")) return `${value}（已連線）`;
+      return `<span class="warn-text">${value}</span>`;
+    }
+
+    function formatFailCount(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return value || "尚未收到";
+      if (n > 0) return `<span class="warn-text">${n}</span>`;
+      return String(n);
+    }
+
+    function buildTimezoneSelect(id, selected) {
+      return `
+        <select id="${id}">
+          <option value="8" ${String(selected) === "8" ? "selected" : ""}>UTC+8（台灣 / 香港）</option>
+          <option value="9" ${String(selected) === "9" ? "selected" : ""}>UTC+9（日本）</option>
+        </select>
+      `;
+    }
+
+    function buildCard(device, mountId) {
+      state[device.id] = {
+        relay: "OFF",
+        autoEnabled: true,
+        onTime: "19:00",
+        offTime: "23:30",
+        timezone: "9",
+
+        lastUpdated: "尚未更新",
+        heartbeat: "尚未收到",
+        lastEvent: "尚未收到",
+        lastEventTime: "尚未收到",
+
+        uptime: "尚未收到",
+        freeHeap: "尚未收到",
+        rssi: "尚未收到",
+        resetReason: "尚未收到",
+
+        diagBootCount: "尚未收到",
+        diagLastResetReason: "尚未收到",
+        diagLastRestartReason: "尚未收到",
+        diagWifiFailCount: "尚未收到",
+        diagMqttFailCount: "尚未收到",
+        diagWifiOfflineSeconds: "尚未收到",
+        diagMqttOfflineSeconds: "尚未收到",
+        diagLastWifiOfflineDuration: "尚未收到",
+        diagLastMqttOfflineDuration: "尚未收到",
+        diagLastWifiStatus: "尚未收到",
+        diagLastMqttState: "尚未收到",
+        diagLastDiagTime: "尚未收到",
+
+        status: "offline",
+        topics: getTopics(device.base),
+        pendingSave: null,
+        actionLockedUntil: 0
+      };
+
+      const mount = document.getElementById(mountId);
+      mount.innerHTML = `
+        <div class="title-row">
+          <div class="title-left">
+            <strong>${device.name}</strong>
+            <div class="device-meta">Topic Base：${device.base}</div>
+          </div>
+          <div class="badge-wrap">
+            <span id="${device.id}_online" class="online-state offline">設備離線</span>
+            <span id="${device.id}_busy" class="busy-state idle">可操作</span>
+            <span id="${device.id}_state" class="state off">關閉</span>
+          </div>
+        </div>
+
+        <div id="${device.id}_summary" class="summary"></div>
+
+        <div class="btn-row">
+          <button class="btn-on" id="${device.id}_on">手動開啟</button>
+          <button class="btn-off" id="${device.id}_off">手動關閉</button>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn-sync" id="${device.id}_sync">重新整理狀態</button>
+        </div>
+
+        <div class="line">
+          <label for="${device.id}_auto">啟用自動排程</label>
+          <input type="checkbox" id="${device.id}_auto" checked />
+        </div>
+
+        <div class="line">
+          <label for="${device.id}_on_time">開啟時間</label>
+          <input type="time" id="${device.id}_on_time" value="19:00" />
+        </div>
+
+        <div class="line">
+          <label for="${device.id}_off_time">關閉時間</label>
+          <input type="time" id="${device.id}_off_time" value="23:30" />
+        </div>
+
+        <div class="line">
+          <label for="${device.id}_timezone">時區</label>
+          ${buildTimezoneSelect(`${device.id}_timezone`, "9")}
+        </div>
+
+        <button class="btn-save" id="${device.id}_save">儲存設定</button>
+      `;
+    }
+
+    function touchUpdated(device) {
+      state[device.id].lastUpdated = formatNow();
+    }
+
+    function isBusy(device) {
+      return Date.now() < (state[device.id].actionLockedUntil || 0);
+    }
+
+    function lockActions(device, ms = ACTION_LOCK_MS) {
+      state[device.id].actionLockedUntil = Date.now() + ms;
+      renderBusy(device);
+      setControlsEnabled(isConnected);
+    }
+
+    function renderBusy(device) {
+      const busyEl = document.getElementById(`${device.id}_busy`);
+      const busy = isBusy(device);
+
+      busyEl.textContent = busy ? "處理中" : "可操作";
+      busyEl.className = `busy-state ${busy ? "busy" : "idle"}`;
+    }
+
+    function renderDeviceOnline(device) {
+      const s = state[device.id];
+      const badge = document.getElementById(`${device.id}_online`);
+      const online = s.status === "online";
+
+      badge.textContent = online ? "設備在線" : "設備離線";
+      badge.className = `online-state ${online ? "online" : "offline"}`;
+    }
+
+    function renderSummary(device) {
+      const s = state[device.id];
+
+      document.getElementById(`${device.id}_summary`).innerHTML = `
+        <div><strong>排程摘要：</strong>自動：${s.autoEnabled ? "啟用" : "停用"}｜開 ${s.onTime}｜關 ${s.offTime}｜時區 ${timezoneLabel(s.timezone)}</div>
+        <div><strong>最後 heartbeat：</strong>${s.heartbeat}</div>
+        <div><strong>最後事件：</strong><span class="event-text">${translateEvent(s.lastEvent)}</span></div>
+        <div><strong>最後事件時間：</strong>${s.lastEventTime}</div>
+
+        <div class="section-box">
+          <div class="section-title">健康狀態</div>
+          <div><strong>運行時間：</strong>${formatUptime(s.uptime)}</div>
+          <div><strong>剩餘記憶體：</strong>${formatHeap(s.freeHeap)}</div>
+          <div><strong>Wi-Fi 訊號：</strong>${formatRssi(s.rssi)}</div>
+          <div><strong>ESP 重啟原因：</strong>${s.resetReason}</div>
+        </div>
+
+        <div class="section-box">
+          <div class="section-title">診斷資訊</div>
+          <div><strong>開機次數：</strong>${s.diagBootCount}</div>
+          <div><strong>ESP 重啟原因：</strong>${s.diagLastResetReason}</div>
+          <div><strong>上次重開原因：</strong>${translateRestartReason(s.diagLastRestartReason)}</div>
+          <div><strong>Wi-Fi 狀態：</strong>${formatWifiStatus(s.diagLastWifiStatus)}</div>
+          <div><strong>MQTT 狀態：</strong>${formatMqttState(s.diagLastMqttState)}</div>
+          <div><strong>Wi-Fi 失敗次數：</strong>${formatFailCount(s.diagWifiFailCount)}</div>
+          <div><strong>MQTT 失敗次數：</strong>${formatFailCount(s.diagMqttFailCount)}</div>
+          <div><strong>Wi-Fi 目前離線時間：</strong>${formatSeconds(s.diagWifiOfflineSeconds)}</div>
+          <div><strong>MQTT 目前離線時間：</strong>${formatSeconds(s.diagMqttOfflineSeconds)}</div>
+          <div><strong>Wi-Fi 上次離線持續時間：</strong>${formatSeconds(s.diagLastWifiOfflineDuration)}</div>
+          <div><strong>MQTT 上次離線持續時間：</strong>${formatSeconds(s.diagLastMqttOfflineDuration)}</div>
+          <div><strong>最後診斷時間：</strong>${s.diagLastDiagTime}</div>
+        </div>
+
+        <div class="updated">最後更新：${s.lastUpdated}</div>
+      `;
+    }
+
+    function renderState(device) {
+      const s = state[device.id];
+      const tag = document.getElementById(`${device.id}_state`);
+      const isOn = s.relay === "ON";
+
+      tag.textContent = isOn ? "開啟" : "關閉";
+      tag.className = `state ${isOn ? "on" : "off"}`;
+
+      document.getElementById(`${device.id}_auto`).checked = !!s.autoEnabled;
+      document.getElementById(`${device.id}_on_time`).value = s.onTime || "19:00";
+      document.getElementById(`${device.id}_off_time`).value = s.offTime || "23:30";
+      document.getElementById(`${device.id}_timezone`).value = String(s.timezone || "9");
+
+      renderSummary(device);
+      renderDeviceOnline(device);
+      renderBusy(device);
+    }
+
+    function setControlsEnabled(enabled) {
+      DEVICES.forEach(d => {
+        const locked = isBusy(d);
+        const canUse = enabled && !locked;
+
+        document.getElementById(`${d.id}_on`).disabled = !canUse;
+        document.getElementById(`${d.id}_off`).disabled = !canUse;
+        document.getElementById(`${d.id}_sync`).disabled = !enabled;
+        document.getElementById(`${d.id}_auto`).disabled = !canUse;
+        document.getElementById(`${d.id}_on_time`).disabled = !canUse;
+        document.getElementById(`${d.id}_off_time`).disabled = !canUse;
+        document.getElementById(`${d.id}_timezone`).disabled = !canUse;
+        document.getElementById(`${d.id}_save`).disabled = !canUse;
+      });
+
+      exportBtnEl.disabled = !enabled;
+      importBtnEl.disabled = !enabled;
+      clearLocalBtnEl.disabled = false;
+    }
+
+    function subscribeDeviceTopics(device) {
+      const tp = state[device.id].topics;
+      [
+        tp.state,
+        tp.autoState,
+        tp.onState,
+        tp.offState,
+        tp.timezoneState,
+        tp.status,
+        tp.heartbeat,
+        tp.event,
+        tp.eventTime,
+
+        tp.healthUptime,
+        tp.healthFreeHeap,
+        tp.healthRssi,
+        tp.healthResetReason,
+
+        tp.diagBootCount,
+        tp.diagLastResetReason,
+        tp.diagLastRestartReason,
+        tp.diagWifiFailCount,
+        tp.diagMqttFailCount,
+        tp.diagWifiOfflineSeconds,
+        tp.diagMqttOfflineSeconds,
+        tp.diagLastWifiOfflineDuration,
+        tp.diagLastMqttOfflineDuration,
+        tp.diagLastWifiStatus,
+        tp.diagLastMqttState,
+        tp.diagLastDiagTime
+      ].forEach(topic => client.subscribe(topic));
+    }
+
+    function sameTime(a, b) {
+      return a === b;
+    }
+
+    function checkPendingSave(device) {
+      const s = state[device.id];
+      if (!s.pendingSave) return;
+
+      const p = s.pendingSave;
+      const autoMatched = s.autoEnabled === p.autoEnabled;
+      const onMatched = s.onTime === p.onTime;
+      const offMatched = s.offTime === p.offTime;
+      const tzMatched = String(s.timezone) === String(p.timezone);
+
+      if (autoMatched && onMatched && offMatched && tzMatched) {
+        log(`${device.name} → 設定已確認儲存`);
+        s.pendingSave = null;
+        saveLocalBackup();
+      }
+    }
+
+    function renderAll() {
+      DEVICES.forEach(d => renderState(d));
+      setControlsEnabled(isConnected);
+    }
+
+    function createBackupObject() {
+      return {
+        version: 6,
+        exportedAt: new Date().toISOString(),
+        devices: DEVICES.map(d => ({
+          id: d.id,
+          name: d.name,
+          base: d.base,
+          autoEnabled: !!state[d.id].autoEnabled,
+          onTime: state[d.id].onTime,
+          offTime: state[d.id].offTime,
+          timezone: String(state[d.id].timezone)
+        }))
+      };
+    }
+
+    function exportBackup() {
+      const backup = createBackupObject();
+      backupTextEl.value = JSON.stringify(backup, null, 2);
+      log("已匯出目前設定");
+    }
+
+    function validateBackupObject(obj) {
+      if (!obj || typeof obj !== "object") return "備份格式不是物件";
+      if (!Array.isArray(obj.devices)) return "備份缺少 devices";
+      if (obj.devices.length !== DEVICES.length) return "備份設備數量不符";
+
+      for (const device of obj.devices) {
+        if (typeof device.id !== "string") return "設備 id 格式錯誤";
+        if (typeof device.autoEnabled !== "boolean") return `設備 ${device.id} 的 autoEnabled 格式錯誤`;
+        if (!/^\d{2}:\d{2}$/.test(device.onTime || "")) return `設備 ${device.id} 的 onTime 格式錯誤`;
+        if (!/^\d{2}:\d{2}$/.test(device.offTime || "")) return `設備 ${device.id} 的 offTime 格式錯誤`;
+        if (device.onTime === device.offTime) return `設備 ${device.id} 的開啟時間與關閉時間不能相同`;
+        if (!["8", "9", 8, 9].includes(device.timezone)) return `設備 ${device.id} 的時區格式錯誤`;
+      }
+
+      return "";
+    }
+
+    function applyBackupToUI(obj) {
+      for (const item of obj.devices) {
+        const device = DEVICES.find(d => d.id === item.id);
+        if (!device) continue;
+
+        document.getElementById(`${device.id}_auto`).checked = !!item.autoEnabled;
+        document.getElementById(`${device.id}_on_time`).value = item.onTime;
+        document.getElementById(`${device.id}_off_time`).value = item.offTime;
+        document.getElementById(`${device.id}_timezone`).value = String(item.timezone);
+
+        state[device.id].autoEnabled = !!item.autoEnabled;
+        state[device.id].onTime = item.onTime;
+        state[device.id].offTime = item.offTime;
+        state[device.id].timezone = String(item.timezone);
+        touchUpdated(device);
+        renderState(device);
+      }
+    }
+
+    function publishDeviceSettings(device, autoEnabled, onTime, offTime, timezone) {
+      const s = state[device.id];
+      const tp = s.topics;
+
+      s.autoEnabled = autoEnabled;
+      s.onTime = onTime;
+      s.offTime = offTime;
+      s.timezone = String(timezone);
+      s.pendingSave = { autoEnabled, onTime, offTime, timezone: String(timezone) };
+      s.lastEvent = "schedule_on_updated";
+
+      touchUpdated(device);
+      renderState(device);
+
+      client.publish(tp.autoSet, autoEnabled ? "true" : "false");
+      client.publish(tp.onSet, onTime);
+      client.publish(tp.offSet, offTime);
+      client.publish(tp.timezoneSet, String(timezone));
+    }
+
+    function importBackup() {
+      if (!isConnected) {
+        log("目前離線，無法套用備份設定");
+        return;
+      }
+
+      const raw = backupTextEl.value.trim();
+      if (!raw) {
+        log("請先貼上備份內容");
+        return;
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (err) {
+        log("備份 JSON 格式錯誤");
+        return;
+      }
+
+      const errMsg = validateBackupObject(parsed);
+      if (errMsg) {
+        log(`備份驗證失敗：${errMsg}`);
+        return;
+      }
+
+      applyBackupToUI(parsed);
+
+      for (const item of parsed.devices) {
+        const device = DEVICES.find(d => d.id === item.id);
+        if (!device) continue;
+
+        lockActions(device, 1200);
+        publishDeviceSettings(device, item.autoEnabled, item.onTime, item.offTime, item.timezone);
+        log(`${device.name} → 已送出備份還原設定，等待設備確認…`);
+      }
+
+      saveLocalBackup(parsed);
+    }
+
+    function saveLocalBackup(backupObj = null) {
+      try {
+        const obj = backupObj || createBackupObject();
+        localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(obj));
+      } catch (err) {
+        console.error("localStorage 保存失敗", err);
+      }
+    }
+
+    function loadLocalBackup() {
+      try {
+        const raw = localStorage.getItem(LOCAL_BACKUP_KEY);
+        if (!raw) return null;
+
+        const parsed = JSON.parse(raw);
+        const errMsg = validateBackupObject(parsed);
+        if (errMsg) return null;
+        return parsed;
+      } catch (err) {
+        return null;
+      }
+    }
+
+    function restoreLocalBackupToPage() {
+      const backup = loadLocalBackup();
+      if (!backup) return;
+
+      applyBackupToUI(backup);
+      backupTextEl.value = JSON.stringify(backup, null, 2);
+      log("已從本機自動保存恢復最近設定");
+    }
+
+    function clearLocalBackup() {
+      localStorage.removeItem(LOCAL_BACKUP_KEY);
+      log("已清除本機自動保存");
+    }
+
+    DEVICES.forEach((d, idx) => buildCard(d, idx === 0 ? "card1" : "card2"));
+    restoreLocalBackupToPage();
+
+    const client = mqtt.connect(MQTT_URL, {
+      clientId: `web-esp-switch-${Math.random().toString(16).slice(2, 10)}`,
+      clean: true,
+      reconnectPeriod: 2000,
+      connectTimeout: 8000
+    });
+
+    client.on("connect", () => {
+      isConnected = true;
+      dotEl.classList.add("online");
+      connTextEl.textContent = "已連線";
+      log("MQTT 已連線");
+
+      DEVICES.forEach(d => subscribeDeviceTopics(d));
+      renderAll();
+    });
+
+    client.on("reconnect", () => {
+      isConnected = false;
+      dotEl.classList.remove("online");
+      connTextEl.textContent = "重新連線中";
+      renderAll();
+    });
+
+    client.on("close", () => {
+      isConnected = false;
+      dotEl.classList.remove("online");
+      connTextEl.textContent = "離線";
+      log("MQTT 已斷線");
+      renderAll();
+    });
+
+    client.on("offline", () => {
+      isConnected = false;
+      dotEl.classList.remove("online");
+      connTextEl.textContent = "離線";
+      renderAll();
+    });
+
+    client.on("error", (err) => {
+      log(`連線錯誤：${err.message}`);
+    });
+
+    client.on("message", (topic, payloadBuf) => {
+      const payload = payloadBuf.toString();
+
+      DEVICES.forEach(d => {
+        const s = state[d.id];
+        const tp = s.topics;
+
+        if (topic === tp.state) {
+          s.relay = payload.toUpperCase() === "ON" ? "ON" : "OFF";
+          touchUpdated(d);
+          renderState(d);
+          setControlsEnabled(isConnected);
+          return;
+        }
+
+        if (topic === tp.autoState) {
+          s.autoEnabled = ["1", "true", "on"].includes(payload.toLowerCase());
+          touchUpdated(d);
+          renderState(d);
+          checkPendingSave(d);
+          setControlsEnabled(isConnected);
+          return;
+        }
+
+        if (topic === tp.onState) {
+          if (/^\d{2}:\d{2}$/.test(payload)) s.onTime = payload;
+          touchUpdated(d);
+          renderState(d);
+          checkPendingSave(d);
+          setControlsEnabled(isConnected);
+          return;
+        }
+
+        if (topic === tp.offState) {
+          if (/^\d{2}:\d{2}$/.test(payload)) s.offTime = payload;
+          touchUpdated(d);
+          renderState(d);
+          checkPendingSave(d);
+          setControlsEnabled(isConnected);
+          return;
+        }
+
+        if (topic === tp.timezoneState) {
+          if (["8", "9"].includes(String(payload).trim())) {
+            s.timezone = String(payload).trim();
+          }
+          touchUpdated(d);
+          renderState(d);
+          checkPendingSave(d);
+          setControlsEnabled(isConnected);
+          return;
+        }
+
+        if (topic === tp.status) {
+          s.status = payload.toLowerCase() === "online" ? "online" : "offline";
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.heartbeat) {
+          s.heartbeat = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.event) {
+          s.lastEvent = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.eventTime) {
+          s.lastEventTime = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.healthUptime) {
+          s.uptime = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.healthFreeHeap) {
+          s.freeHeap = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.healthRssi) {
+          s.rssi = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.healthResetReason) {
+          s.resetReason = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagBootCount) {
+          s.diagBootCount = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagLastResetReason) {
+          s.diagLastResetReason = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagLastRestartReason) {
+          s.diagLastRestartReason = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagWifiFailCount) {
+          s.diagWifiFailCount = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagMqttFailCount) {
+          s.diagMqttFailCount = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagWifiOfflineSeconds) {
+          s.diagWifiOfflineSeconds = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagMqttOfflineSeconds) {
+          s.diagMqttOfflineSeconds = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagLastWifiOfflineDuration) {
+          s.diagLastWifiOfflineDuration = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagLastMqttOfflineDuration) {
+          s.diagLastMqttOfflineDuration = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagLastWifiStatus) {
+          s.diagLastWifiStatus = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagLastMqttState) {
+          s.diagLastMqttState = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+
+        if (topic === tp.diagLastDiagTime) {
+          s.diagLastDiagTime = payload;
+          touchUpdated(d);
+          renderState(d);
+          return;
+        }
+      });
+    });
+
+    DEVICES.forEach(d => {
+      const s = state[d.id];
+      const tp = s.topics;
+
+      document.getElementById(`${d.id}_on`).addEventListener("click", () => {
+        if (!isConnected) {
+          log(`${d.name} → 目前離線，無法送出指令`);
+          return;
+        }
+        if (isBusy(d)) return;
+
+        lockActions(d);
+
+        s.relay = "ON";
+        s.lastEvent = "manual_on";
+        touchUpdated(d);
+        renderState(d);
+        client.publish(tp.set, "ON");
+        log(`${d.name} → 手動開啟`);
+      });
+
+      document.getElementById(`${d.id}_off`).addEventListener("click", () => {
+        if (!isConnected) {
+          log(`${d.name} → 目前離線，無法送出指令`);
+          return;
+        }
+        if (isBusy(d)) return;
+
+        lockActions(d);
+
+        s.relay = "OFF";
+        s.lastEvent = "manual_off";
+        touchUpdated(d);
+        renderState(d);
+        client.publish(tp.set, "OFF");
+        log(`${d.name} → 手動關閉`);
+      });
+
+      document.getElementById(`${d.id}_sync`).addEventListener("click", () => {
+        if (!isConnected) {
+          log(`${d.name} → 目前離線，無法重新整理狀態`);
+          return;
+        }
+
+        subscribeDeviceTopics(d);
+        log(`${d.name} → 已重新整理狀態`);
+      });
+
+      document.getElementById(`${d.id}_save`).addEventListener("click", () => {
+        if (!isConnected) {
+          log(`${d.name} → 目前離線，無法儲存設定`);
+          return;
+        }
+        if (isBusy(d)) return;
+
+        const autoEnabled = document.getElementById(`${d.id}_auto`).checked;
+        const onTime = document.getElementById(`${d.id}_on_time`).value;
+        const offTime = document.getElementById(`${d.id}_off_time`).value;
+        const timezone = document.getElementById(`${d.id}_timezone`).value;
+
+        if (!/^\d{2}:\d{2}$/.test(onTime) || !/^\d{2}:\d{2}$/.test(offTime)) {
+          log(`${d.name} → 時間格式錯誤，請使用 HH:MM`);
+          return;
+        }
+
+        if (sameTime(onTime, offTime)) {
+          log(`${d.name} → 開啟時間與關閉時間不能相同`);
+          return;
+        }
+
+        if (!["8", "9"].includes(String(timezone))) {
+          log(`${d.name} → 時區設定錯誤`);
+          return;
+        }
+
+        lockActions(d);
+        publishDeviceSettings(d, autoEnabled, onTime, offTime, timezone);
+        saveLocalBackup();
+        log(`${d.name} → 設定送出中，等待設備確認…`);
+      });
+
+      document.getElementById(`${d.id}_auto`).addEventListener("change", saveLocalBackup);
+      document.getElementById(`${d.id}_on_time`).addEventListener("change", saveLocalBackup);
+      document.getElementById(`${d.id}_off_time`).addEventListener("change", saveLocalBackup);
+      document.getElementById(`${d.id}_timezone`).addEventListener("change", saveLocalBackup);
+    });
+
+    exportBtnEl.addEventListener("click", exportBackup);
+    importBtnEl.addEventListener("click", importBackup);
+    clearLocalBtnEl.addEventListener("click", clearLocalBackup);
+
+    setInterval(() => {
+      DEVICES.forEach(d => renderBusy(d));
+      setControlsEnabled(isConnected);
+    }, 250);
+
+    renderAll();
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("./service-worker.js")
+          .then(() => console.log("Service Worker 註冊成功"))
+          .catch(err => console.error("Service Worker 註冊失敗:", err));
+      });
+    }
+  </script>
+</body>
+</html>
