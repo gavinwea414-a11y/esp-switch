@@ -1,10 +1,4 @@
-diff --git a/service-worker.js b/service-worker.js
-index ed7aa86c3afe1d59c0f33e8ad8793f23ac270224..5bfdf1571f157396f7a61d09aeae978d715e90b4 100644
---- a/service-worker.js
-+++ b/service-worker.js
-@@ -1,26 +1,26 @@
--const CACHE_NAME = "esp-switch-pwa-v2";
-+const CACHE_NAME = "esp-switch-pwa-v3";
+const CACHE_NAME = "esp-switch-pwa-v3";
  
  const CORE_ASSETS = [
    "./",
