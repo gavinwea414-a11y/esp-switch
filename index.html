@@ -3,7 +3,7 @@
 
 <head>
 
-<meta charset="UTF-8" />
+<meta charset="UTF-8"/>
 
 <meta
 name="viewport"
@@ -11,7 +11,7 @@ content="width=device-width, initial-scale=1.0"
 />
 
 <title>
-ESP-01S 雙設備 MQTT 遠端開關
+ESP-01S MQTT 控制面板
 </title>
 
 <link
@@ -27,10 +27,10 @@ content="#2563eb"
 <style>
 
 body{
-  font-family:Arial,sans-serif;
-  background:#f3f4f6;
   margin:0;
   padding:20px;
+  background:#f3f4f6;
+  font-family:Arial,sans-serif;
 }
 
 .container{
@@ -39,7 +39,7 @@ body{
 }
 
 .card{
-  background:#fff;
+  background:white;
   border-radius:16px;
   padding:20px;
   margin-bottom:20px;
@@ -52,11 +52,11 @@ h1,h2,h3{
 
 .status{
   display:inline-block;
-  padding:6px 12px;
+  padding:6px 14px;
   border-radius:999px;
-  color:#fff;
-  font-size:14px;
+  color:white;
   font-weight:bold;
+  font-size:14px;
 }
 
 .online{
@@ -75,41 +75,8 @@ h1,h2,h3{
   background:#ef4444;
 }
 
-button{
-  border:none;
-  border-radius:12px;
-  padding:14px;
-  font-size:18px;
-  font-weight:bold;
-  cursor:pointer;
-  color:#fff;
-}
-
-.btn-on{
-  background:#16a34a;
-}
-
-.btn-off{
-  background:#ef4444;
-}
-
-.btn-save{
-  background:#2563eb;
-  width:100%;
-}
-
-.btn-row{
-  display:flex;
-  gap:12px;
-  margin-top:20px;
-}
-
-.btn-row button{
-  flex:1;
-}
-
 .info{
-  margin-top:15px;
+  margin-top:14px;
   line-height:1.8;
 }
 
@@ -120,8 +87,39 @@ button{
 }
 
 .small{
+  font-size:13px;
   color:#6b7280;
-  font-size:14px;
+}
+
+.btn-row{
+  display:flex;
+  gap:12px;
+  margin-top:20px;
+}
+
+button{
+  border:none;
+  border-radius:12px;
+  padding:14px;
+  color:white;
+  font-size:18px;
+  font-weight:bold;
+  cursor:pointer;
+}
+
+.btn-on{
+  flex:1;
+  background:#16a34a;
+}
+
+.btn-off{
+  flex:1;
+  background:#ef4444;
+}
+
+.btn-save{
+  width:100%;
+  background:#2563eb;
 }
 
 input[type="time"],
@@ -143,7 +141,7 @@ select{
 <div class="card">
 
 <h1>
-ESP-01S 雙設備 MQTT 遠端開關
+ESP-01S MQTT 控制面板
 </h1>
 
 <div id="mqttStatus">
@@ -172,7 +170,13 @@ const MQTT_BROKER =
 "wss://broker.emqx.io:8084/mqtt";
 
 // =====================================================
-// Device List
+// 防止編輯時 UI 被 render 覆蓋
+// =====================================================
+
+let editingSchedule = false;
+
+// =====================================================
+// Devices
 // =====================================================
 
 const DEVICES = [
@@ -192,7 +196,7 @@ const DEVICES = [
 ];
 
 // =====================================================
-// Device State
+// State
 // =====================================================
 
 const state = {};
@@ -200,10 +204,6 @@ const state = {};
 function initializeDeviceState(device){
 
   return {
-
-    id:device.id,
-    name:device.name,
-    base:device.base,
 
     relay:"OFF",
     status:"offline",
@@ -256,6 +256,7 @@ function getTopics(base){
 
     status:t(base,"status"),
     heartbeat:t(base,"heartbeat"),
+
     event:t(base,"event"),
     eventTime:t(base,"event_time"),
 
@@ -270,7 +271,7 @@ function getTopics(base){
 }
 
 // =====================================================
-// Init
+// Init State
 // =====================================================
 
 DEVICES.forEach(device=>{
@@ -321,7 +322,6 @@ ${device.name}
 </h2>
 
 <div class="small">
-Topic Base：
 ${device.base}
 </div>
 
@@ -330,7 +330,9 @@ ${device.base}
 <div>
 
 <span
-class="status ${s.status==="online"?"online":"offline"}"
+class="status ${s.status==="online"
+?"online"
+:"offline"}"
 >
 
 ${s.status==="online"
@@ -457,6 +459,7 @@ ${s.wifiForceResetCount}
 type="checkbox"
 id="auto_${device.id}"
 ${s.autoEnabled?"checked":""}
+onfocus="editingSchedule=true"
 />
 
 啟用自動排程
@@ -477,6 +480,7 @@ ${s.autoEnabled?"checked":""}
 type="time"
 id="on_${device.id}"
 value="${s.onTime}"
+onfocus="editingSchedule=true"
 />
 
 </div>
@@ -491,6 +495,7 @@ value="${s.onTime}"
 type="time"
 id="off_${device.id}"
 value="${s.offTime}"
+onfocus="editingSchedule=true"
 />
 
 </div>
@@ -503,6 +508,7 @@ value="${s.offTime}"
 
 <select
 id="tz_${device.id}"
+onfocus="editingSchedule=true"
 >
 
 <option
@@ -550,7 +556,6 @@ style="margin-top:15px;"
 >
 
 最後更新：
-
 ${s.lastUpdate}
 
 </div>
@@ -655,8 +660,7 @@ client.on("message",(topic,payload)=>{
     }
 
     if(topic===topics.status){
-
-      s.status =
+      s.status=
       msg==="online"
       ?"online"
       :"offline";
@@ -720,17 +724,17 @@ client.on("message",(topic,payload)=>{
 
   });
 
-  render();
+  if(!editingSchedule){
+    render();
+  }
+
 });
 
 // =====================================================
-// Relay Command
+// Relay Control
 // =====================================================
 
-function sendCommand(
-  deviceId,
-  cmd
-){
+function sendCommand(deviceId,cmd){
 
   const device =
   DEVICES.find(
@@ -753,6 +757,8 @@ function sendCommand(
 // =====================================================
 
 function saveSchedule(deviceId){
+
+  editingSchedule = false;
 
   const device =
   DEVICES.find(
