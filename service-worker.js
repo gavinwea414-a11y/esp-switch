@@ -1,4 +1,4 @@
-const CACHE_NAME = "esp-switch-pwa-v6";
+const CACHE_NAME = "esp-switch-pwa-v9";
 
 const CORE_ASSETS = [
   "./",
